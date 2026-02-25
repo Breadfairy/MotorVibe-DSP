@@ -1,71 +1,30 @@
 # Motor Signal Pipeline (Python)
 
-## Current Structure
-- `main.py` is the orchestration module.
-- `signals.py` reads/builds arrays from CSV or live serial data.
-- `charting.py` handles plotting and saving charts.
-- `analytics.py` is reserved for math operations on arrays.
-- `dsp.py` is present but not used in the current `main.py` flow.
+This project is a simple motor-signal pipeline. It reads sensor data, builds
+raw signal arrays, applies lightweight analytics transforms, and saves charts.
 
-## Data Schema
-The signal build and plotting flow expects this exact column order:
+For CSV testing, the project uses an online dataset captured from the same
+sensor family as the target hardware. The goal is to keep development close to
+real sensor behavior while the live serial path is being tuned.
 
-1. `Amostra`
-2. `Acel_X`
-3. `Acel_Y`
-4. `Acel_Z`
-5. `Giro_X`
-6. `Giro_Y`
-7. `Giro_Z`
-8. `Temperatura`
+The signal flow is direct. `main.py` orchestrates the process. `signals.py`
+reads the input and builds `rawSignals` as an array of arrays. `analytics.py`
+takes `rawSignals` and builds `dspSignals`, including the filtered temperature
+trend. `charting.py` takes `dspSignals` and writes the output plot image.
 
-In code, `Amostra` is mapped to array variable `sample`.
+In CSV mode, the current test file is selected in `main.py` and the chart is
+saved to `outputs/csv`. In live mode, serial data is read through the same
+signal path so both modes stay aligned.
 
-## Main Flow
-`main.py` supports two modes:
+Dependencies are `numpy`, `pandas`, `pyserial`, and `matplotlib`.
 
-- `csv`: reads a CSV, builds signal arrays, prints quick checks, and plots.
-- `live`: reads serial data, builds signal arrays, and prints quick checks.
+```bash
+python3 -m pip install numpy pandas pyserial matplotlib
+```
 
-Mode is passed by argv:
+Run commands:
 
 ```bash
 python3 main.py csv
 python3 main.py live
 ```
-
-## CSV Mode
-- CSV path is currently hardcoded in `main.py`:
-  - `data/testData/nivel2.csv` (speed 2 dataset)
-- The script prints:
-  - `csvPath`
-  - `csvDataHead`
-  - first 5 values of each built array
-
-## Live Mode
-- Serial settings are configured in `main.py`:
-  - `serialPort`
-  - `baudRate`
-  - `serialDelimiter`
-  - `serialTimeout`
-  - `serialEncoding`
-- `runLive` currently calls `signals.liveSense(..., sample_count=5000, ...)`.
-- The MCU must stream one line per sample in this order:
-  - `Amostra,Acel_X,Acel_Y,Acel_Z,Giro_X,Giro_Y,Giro_Z,Temperatura`
-
-## Charting
-- Plot function: `charting.plotRaw(...)`
-- Output path base: `outputs/csv`
-- Output filename pattern:
-  - `<csv_stem>_plotRaw.png`
-- Current plot limits each chart to the first `100` samples.
-- One figure is produced with three subplots:
-  - top-left: `Acel_X`, `Acel_Y`, `Acel_Z` vs `sample`
-  - top-right: `Giro_X`, `Giro_Y`, `Giro_Z` vs `sample`
-  - bottom full width: `Temperatura` vs `sample`
-
-## Dependencies
-- `numpy`
-- `pandas`
-- `pyserial`
-- `matplotlib`

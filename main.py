@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import analytics
 import charting
 import pandas as pd
 import signals
@@ -7,6 +8,7 @@ import sys
 
 csvPath = "data/testData/nivel2.csv"
 outputDirPath = "outputs/csv"
+tempTrendNth = 10
 serialPort = "COM3"
 baudRate = 115200
 serialDelimiter = ","
@@ -14,23 +16,26 @@ serialTimeout = 1.0
 serialEncoding = "utf-8"
 
 
-# Orchestrates CSV input through signals, DSP, then analytics.
+# Orchestrates CSV input through signals, analytics, then charting.
 def runCSV(csv_path):
     csvData = pd.read_csv(csv_path)
     print("csvPath:", csv_path)
     print("csvDataHead:")
     print(csvData.head())
 
-    (
-        sample,
-        Acel_X,
-        Acel_Y,
-        Acel_Z,
-        Giro_X,
-        Giro_Y,
-        Giro_Z,
-        Temperatura,
-    ) = signals.buildSignals(csvData)
+    rawSignals = signals.buildSignals(csvData)
+    dspSignals = analytics.buildDSPSignals(rawSignals, tempTrendNth)
+
+    sample = rawSignals[0]
+    Acel_X = rawSignals[1]
+    Acel_Y = rawSignals[2]
+    Acel_Z = rawSignals[3]
+    Giro_X = rawSignals[4]
+    Giro_Y = rawSignals[5]
+    Giro_Z = rawSignals[6]
+    Temperatura = rawSignals[7]
+    tempTrend = dspSignals[9]
+
     print("sample[:5]:", sample[:5])
     print("Acel_X[:5]:", Acel_X[:5])
     print("Acel_Y[:5]:", Acel_Y[:5])
@@ -39,36 +44,19 @@ def runCSV(csv_path):
     print("Giro_Y[:5]:", Giro_Y[:5])
     print("Giro_Z[:5]:", Giro_Z[:5])
     print("Temperatura[:5]:", Temperatura[:5])
+    print("tempTrendNth:", tempTrendNth)
+    print("tempTrend[:5]:", tempTrend[:5])
+
     plotRawPath = str(
         Path(outputDirPath) / (Path(csv_path).stem + "_plotRaw.png")
     )
-    charting.plotRaw(
-        sample,
-        Acel_X,
-        Acel_Y,
-        Acel_Z,
-        Giro_X,
-        Giro_Y,
-        Giro_Z,
-        Temperatura,
-        plotRawPath,
-    )
+    charting.plotRaw(dspSignals, plotRawPath)
     print("plotRawPath:", plotRawPath)
 
-    # DSP and analytics are disabled for this signal-chain test.
-    return (
-        sample,
-        Acel_X,
-        Acel_Y,
-        Acel_Z,
-        Giro_X,
-        Giro_Y,
-        Giro_Z,
-        Temperatura,
-    )
+    return dspSignals
 
 
-# Orchestrates live serial input through signals, DSP, then analytics.
+# Orchestrates live input through signals and analytics.
 def runLive(
     port,
     baudrate,
@@ -76,16 +64,7 @@ def runLive(
     timeout,
     encoding,
 ):
-    (
-        sample,
-        Acel_X,
-        Acel_Y,
-        Acel_Z,
-        Giro_X,
-        Giro_Y,
-        Giro_Z,
-        Temperatura,
-    ) = signals.liveSense(
+    rawSignals = signals.liveSense(
         port=port,
         sample_count=5000,
         baudrate=baudrate,
@@ -93,6 +72,18 @@ def runLive(
         timeout=timeout,
         encoding=encoding,
     )
+    dspSignals = analytics.buildDSPSignals(rawSignals, tempTrendNth)
+
+    sample = rawSignals[0]
+    Acel_X = rawSignals[1]
+    Acel_Y = rawSignals[2]
+    Acel_Z = rawSignals[3]
+    Giro_X = rawSignals[4]
+    Giro_Y = rawSignals[5]
+    Giro_Z = rawSignals[6]
+    Temperatura = rawSignals[7]
+    tempTrend = dspSignals[9]
+
     print("sample[:5]:", sample[:5])
     print("Acel_X[:5]:", Acel_X[:5])
     print("Acel_Y[:5]:", Acel_Y[:5])
@@ -101,18 +92,10 @@ def runLive(
     print("Giro_Y[:5]:", Giro_Y[:5])
     print("Giro_Z[:5]:", Giro_Z[:5])
     print("Temperatura[:5]:", Temperatura[:5])
+    print("tempTrendNth:", tempTrendNth)
+    print("tempTrend[:5]:", tempTrend[:5])
 
-    # DSP and analytics are disabled for this signal-chain test.
-    return (
-        sample,
-        Acel_X,
-        Acel_Y,
-        Acel_Z,
-        Giro_X,
-        Giro_Y,
-        Giro_Z,
-        Temperatura,
-    )
+    return dspSignals
 
 
 if __name__ == "__main__":

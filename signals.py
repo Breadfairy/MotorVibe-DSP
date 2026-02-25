@@ -14,7 +14,7 @@ def buildSignals(data):
     Giro_Y = data["Giro_Y"].to_numpy(dtype=np.float64)
     Giro_Z = data["Giro_Z"].to_numpy(dtype=np.float64)
     Temperatura = data["Temperatura"].to_numpy(dtype=np.float64)
-    return (
+    rawSignals = [
         sample,
         Acel_X,
         Acel_Y,
@@ -23,7 +23,8 @@ def buildSignals(data):
         Giro_Y,
         Giro_Z,
         Temperatura,
-    )
+    ]
+    return rawSignals
 
 
 # Reads a static CSV file into a DataFrame, then reuses buildSignals.

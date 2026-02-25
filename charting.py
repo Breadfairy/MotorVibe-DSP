@@ -31,16 +31,19 @@ def _styleLegend(legend):
 
 
 def plotRaw(
-    sample,
-    Acel_X,
-    Acel_Y,
-    Acel_Z,
-    Giro_X,
-    Giro_Y,
-    Giro_Z,
-    Temperatura,
+    dspSignals,
     savePath,
 ):
+    sample = dspSignals[0]
+    Acel_X = dspSignals[1]
+    Acel_Y = dspSignals[2]
+    Acel_Z = dspSignals[3]
+    Giro_X = dspSignals[4]
+    Giro_Y = dspSignals[5]
+    Giro_Z = dspSignals[6]
+    tempTrendSample = dspSignals[8]
+    tempTrend = dspSignals[9]
+
     samplePlot = sample[:100]
     acelXPlot = Acel_X[:100]
     acelYPlot = Acel_Y[:100]
@@ -48,7 +51,8 @@ def plotRaw(
     giroXPlot = Giro_X[:100]
     giroYPlot = Giro_Y[:100]
     giroZPlot = Giro_Z[:100]
-    tempPlot = Temperatura[:100]
+    tempSamplePlot = tempTrendSample[:100]
+    tempPlot = tempTrend[:100]
 
     fig = plt.figure(figsize=(12, 8))
     fig.patch.set_facecolor(BG_COLOR)
@@ -116,13 +120,13 @@ def plotRaw(
     _styleLegend(giroLegend)
 
     tempAx.plot(
-        samplePlot,
+        tempSamplePlot,
         tempPlot,
         color=CLOSE_COLOR,
         linewidth=1.2,
         label="Temperatura",
     )
-    tempAx.set_title("Temperatura vs sample", color=TEXT_COLOR, pad=8)
+    tempAx.set_title("Temperatura trend vs sample", color=TEXT_COLOR, pad=8)
     tempAx.set_xlabel("sample", color=TEXT_COLOR)
     tempAx.set_ylabel("Temperatura", color=TEXT_COLOR)
     tempLegend = tempAx.legend(loc="best", frameon=True, fontsize=8)
