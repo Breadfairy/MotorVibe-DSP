@@ -1,5 +1,6 @@
 import numpy as np
 
+
 # Calculates a simple moving average on a 1D array.
 def movingAverage(signal, windowSize):
     kernel = np.ones(windowSize, dtype=np.float64) / windowSize
@@ -11,30 +12,28 @@ def nthSample(signal, n):
     return signal[::n]
 
 
-# Builds dspSignals from rawSignals and appends filtered temperature trend.
+# Builds a small named DSP view from the current raw signal set.
 def buildDSPSignals(rawSignals, tempTrendNth):
-    sample = rawSignals[0]
-    Acel_X = rawSignals[1]
-    Acel_Y = rawSignals[2]
-    Acel_Z = rawSignals[3]
-    Giro_X = rawSignals[4]
-    Giro_Y = rawSignals[5]
-    Giro_Z = rawSignals[6]
-    Temperatura = rawSignals[7]
-
+    sample = rawSignals["sample"]
+    mpu1AccX = rawSignals["mpu1AccX"]
+    mpu1AccY = rawSignals["mpu1AccY"]
+    mpu1AccZ = rawSignals["mpu1AccZ"]
+    mpu1GyrX = rawSignals["mpu1GyrX"]
+    mpu1GyrY = rawSignals["mpu1GyrY"]
+    mpu1GyrZ = rawSignals["mpu1GyrZ"]
+    ds18b20One = rawSignals["ds18b20One"]
     tempTrendSample = nthSample(sample, tempTrendNth)
-    tempTrend = nthSample(Temperatura, tempTrendNth)
-
-    dspSignals = [
-        sample,
-        Acel_X,
-        Acel_Y,
-        Acel_Z,
-        Giro_X,
-        Giro_Y,
-        Giro_Z,
-        Temperatura,
-        tempTrendSample,
-        tempTrend,
-    ]
+    tempTrend = nthSample(ds18b20One, tempTrendNth)
+    dspSignals = {
+        "sample": sample,
+        "mpu1AccX": mpu1AccX,
+        "mpu1AccY": mpu1AccY,
+        "mpu1AccZ": mpu1AccZ,
+        "mpu1GyrX": mpu1GyrX,
+        "mpu1GyrY": mpu1GyrY,
+        "mpu1GyrZ": mpu1GyrZ,
+        "ds18b20One": ds18b20One,
+        "tempTrendSample": tempTrendSample,
+        "tempTrend": tempTrend,
+    }
     return dspSignals

@@ -1,0 +1,7 @@
+AGENTS.md
+TODO.md
+tags
+__pycache__/
+*.pyc
+.DS_Store
+prompts_history.txt

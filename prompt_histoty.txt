@@ -1,0 +1,50 @@
+Session prompt history
+
+1. read the full repo and get aquainted witht he code. id like to neaten up the main.py so that the csv handling is in the acript not after. the last thing in main.py should be the if __name__ == "__main__": main() call. also look for redundancy and for parity between the ai.docx and the repo code.
+
+2. - direct uclidean as in; sqrt(x^2 + z^2 + z^2)?
+
+3. ok. so to clean up main.py, lets move terminal printing to its own or possibly the GUI.py can include both the terminal printing and charting functionality
+
+4. ok so is analytics used at all?
+
+5. remove it as long as the moving average is applied the same way in signals.
+
+6. alright in the readme. give me an easy to read programatic flow of how the ML stage works. including the functions called and what they do. and why things like  37 hiddenSize = 32
+ 38 epochCount = 200
+ 39 learningRate = 0.001
+
+are necessary.
+
+7. readme.md. If you want, I can do one more pass to turn that into an even more diagram-like block with arrows, like CSV -> windows -> signals -> features -> tensors -> model -> probabilities. yes simplify it a bit. not the whole readme jsut the ML part.
+
+8. ok ive edited some parts out of the readme but i would like you to add signals generated and used in the ML as well as non ML classify them into time a frequency. mych like the AI.docx does
+
+9. no this is way too in depth. keep it super simple list format
+
+10. arnt all signals used for ML?
+
+11. - full spectra like mpu1AccMagSpectrum
+
+› - mpu1TempAvg, mpu1TempGrad
+    - mpu2TempAvg, mpu2TempGrad
+
+is it worth adding these to ML though?? also, can you confirm, that the frequency spectrum is build from the summation of the individual Acc axis. so for example, MPU1spectrum = FFT(acc1X) + FFT(Acc1Y) _ FFT(acc1Z)
+
+12. add them. then, confirm with me that im not crasy in building the spectrum by summing the individual axis. this accounts for any phase cancellation and magnitudal freakyness on the spectrum
+
+13. outlien the pros and cons of each method. also, remove gradient from the ML set. this can be a static measurement
+
+14. no sorry just keep them in for now so we can test it. give me the descriptions of FFT analysis approaches
+
+15. ok so for bearing failures etc, i want frequency band energy and for fundameldal hz and magnitude i gess this can be the original?
+
+16. yes implement this and labell the splits clearly. also include the frequency energy spectra sum in the ML as well. we may as well go full ML and cut later.
+
+17. so all signals are now within the ML
+
+18. ok great. i think now summarise what is left to be done in the TODO.md. such as charting and terminal print structure (clearing constantly or not). and then maybe the configurable to more sensor things but i think for now this is beyond a prototype harness.
+
+19. audit the readme and make sure its up to date
+
+20. ok append the prompt history to the prompt_histoty.txt

@@ -18,7 +18,8 @@ Build a simple Python signal, dsp and visualisation pipeline for motor sensing:
 - Use clear variable names in camelCase code conventions
 - limit line length to 80 characters
 - No globals for signal arrays; return data from functions.
-- No dictionaries for sensor-array outputs unless explicitly requested.
+- Dictionaries are allowed for raw and derived signal containers.
+- Prefer explicit sensor and signal names as dictionary keys.
 - Do not add try/except blocks unless explicitly requested.
 - Keep descriptor comments at the top of each function.
 - Do not assign default values in function arguments when those values are
@@ -26,21 +27,31 @@ Build a simple Python signal, dsp and visualisation pipeline for motor sensing:
 
 ## Data Flow Rules
 basic flow of data is as follows:
-  read data > build signals > DSP and build dsp arrays > visualisation.
+  read data > buffer data > build signals > ML and rules > visualisation.
 
-For `signals.py`, keep this exact simple template unless asked otherwise:
+Current target module flow:
+- `buffer.py`
+  - build fixed-size buffers from CSV or serial rows
+- `signals.py`
+  - build time-domain and frequency-domain signals from the current buffer
+- `ml.py`
+  - train and run the PyTorch model
+- `rules.py`
+  - run non-ML logic and health thresholds
+- `charting.py`
+  - display or save charts
+- `main.py`
+  - call the stages sequentially in a clear top-down script flow
+
+For `signals.py`, prefer this structure unless asked otherwise:
 - Required function names:
   - `readCSV`
   - `liveSense`
   - `buildSignals`
-- `readCSV` uses pandas to read CSV, then calls `buildSignals`.
-- `liveSense` reads serial rows, builds a pandas DataFrame, then calls
-  `buildSignals`.
+- `readCSV` uses pandas to read CSV rows for buffer and signal building.
+- `liveSense` reads serial rows for buffer and signal building.
 - `buildSignals` converts columns directly to NumPy `float64` arrays and
-  returns:
-  `VibeOneA, VibeTwoA, HeatOne`
-- Use fixed sensor columns:
-  `["VibeOneA", "VibeTwoA", "HeatOne"]`
+  returns named raw and derived signals.
 - Do not add header/schema validation unless requested.
 
 ## Dependencies
