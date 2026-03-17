@@ -1,22 +1,15 @@
 # Motor Signal Pipeline
 
-This repo builds a direct motor sensing pipeline:
-- serial MCU data -> arrays
-- CSV replay data -> arrays
-- DSP and ML consume those arrays
-- charting writes visual output
-
-The current build order is:
+This repo builds a direct motor sensing pipeline. runs live or via csv
+input. The current program flow  is:
+- read
 - buffer
-- signals
+- build signals
 - ML
 - gui / visualisation
 
-## Sensors
-Current MCU and link target:
+## Hardware
 - ESP32 CP2102 38 Pin Development Board USB-C
-
-Target hardware uses:
 - 2 x MPU6050
 - 2 x DS18B20
 
@@ -48,62 +41,52 @@ Current raw field order:
 The firmware side and Python side need one agreed serial contract before
 live capture starts.
 
-Current live transport target:
-- ESP32 MCU over onboard CP2102 USB serial bridge
-- host connection over USB-C
-
 Agree on:
 - baud rate
 - line ending
-- text or binary payload
-- payload delimiter if text is used
+- payload delimiter. eg ",".
 - payload field order
-- sample rate target
+- sample rate
 - whether a header row is sent
-- whether sample index or timestamp is sent
-- units and scaling for every field
-- whether the ESP32 waits for a host start token
-- whether the board auto-resets when the serial port opens
+- units and scaling for every field. eg rounding
 
 Recommended first protocol for this repo:
 - text payload
 - UTF-8 encoding
-- one newline-terminated CSV row per sample
+- one CSV row per sample
 - comma-delimited fields
 - fixed field order matching the raw field list above
 
-Example row:
+Example:
 - `124,0.12,-0.03,9.81,0.10,0.02,-0.01,31.5,0.11,-0.02,9.79,0.09,0.01,-0.02,31.4,28.2,28.1`
 
 ## Live Buffering
 Live buffering is rolling rather than disjoint block reads.
 
 Current live flow:
-- fill one 2-second live buffer
-- read the next live update chunk
+- fill one 2-second live buffer array
+- read the next live update chunk. array updated every 0.25s
 - drop the oldest rows
 - append the newest rows
-- rebuild signals and ML output on the updated window
+- rebuild signals and ML output on the updated window. (1s window analysis and
+  2s buffer for processing time provisions)
 - repeat
 
 This keeps a fixed live analysis window while allowing overlapped updates.
 
 ## Training Data Layout
+
 Use one folder per condition label:
 - `data/train/healthy/*.csv`
 - `data/train/looseMounting/*.csv`
 - `data/train/maxLoading/*.csv`
 - `data/train/minLoading/*.csv`
 - `data/train/offAxis/*.csv`
-- `data/train/multipleFailures/*.csv`
+- `data/train/multipleFailures/*.csv` (eg, 1 screw loose and off axis)
 
-Training flow:
-- scan label folders
-- slice each CSV into 1-second windows
-- build one feature vector per window
-- stack all windows into one training set
-- train the model
-- save weights for later inference
+each failure mode should be run for a minimum 1m. 
+More minutes = more training samples = stronger ML.
+
 
 ## Generated Signals
 Time-domain signals:
@@ -143,156 +126,139 @@ Signals used by ML:
 - mean of `ds18b20OneAvg`, `ds18b20OneGrad`
 - mean of `ds18b20TwoAvg`, `ds18b20TwoGrad`
 
-Signals for non-ML:
-- `ds18b20OneAvg`, `ds18b20TwoAvg`
-- `ds18b20OneGrad`, `ds18b20TwoGrad`
-- `DomFreq`, `DomMag`
-- `AxisPowerEnergy1_A`, `AxisPowerEnergy2_A`, `AxisPowerEnergy3_A`
+## Frequency Analysis
+Current prototype frequency analysis follows this flow:
+- build one time-domain window
+- build one real FFT magnitude spectrum
+- detect the dominant fundamental frequency
+- derive shaft speed from that fundamental:
+  `shaftRpm = 60 * fundamentalHz`
+- derive bearing order bands from the fundamental
+- track band RMS over time rather than one single FFT bin peak
+
+Current bearing proof-of-concept uses:
+- `BPFO` on the raw FFT
+- `BPFI` on the raw FFT order band
+
+Current prototype order bands are:
+- `BPFO`: `3x` to `5x` shaft frequency with `+/- 10%` tolerance
+- `BPFI`: `5x` to `7x` shaft frequency with `+/- 10%` tolerance
+
+The main levers are:
+- sample rate:
+  sets the max observable frequency and the frequency axis scaling
+- sample length:
+  sets frequency resolution using
+  `frequencyResolutionHz = sampleRate / sampleCount`
+
+At `1000 Hz` sample rate:
+- Nyquist is `500 Hz`
+- low-frequency order tracking is still usable
+- fundamental, BPFO, and BPFI order bands can still be tracked with FFT if
+  they fall below `500 Hz`
+
+For the current planned build, this means:
+- shaft frequency tracking is fine
+- BPFO FFT band tracking is fine
+- BPFI FFT band tracking is fine as a prototype feature
 
 ## ML Program Flow
 There are really two ML paths in this repo:
 - training from labelled CSV files
-- inference from one current signal block
+- live from one current signal block
 
-Training path:
+Training flow:
+- scan label folders
+- slice each CSV into 1-second windows
+- build one feature vector per window
+- stack all windows into one training set
+- train the model
+- save weights for later inference
 
-```text
-label folders
--> buildLabelledCsvPaths
--> ml.buildTrainingSet
--> ml.buildLabelledFeatureRows
--> ml.buildWindowSignalData
--> buffer.buildBuffer
--> signals.buildSignals
--> ml.buildFeatureVector
--> ml.buildFeatureTensor + ml.buildLabelTensor
--> buildClassifierModel
--> ml.trainModel
--> ml.saveModel
-```
+Live flow:
 
-In plain terms:
-- `main.runTraining(...)` starts the training flow
-- each labelled CSV is cut into 1-second windows
-- each window becomes one `signalData` block
-- each `signalData` block becomes one feature vector
-- all feature vectors are stacked into one training matrix
-- the model is trained on that matrix and the labels
-- the trained weights are saved to `modelPath`
-
-Inference path:
-
-```text
-current CSV or live buffer
--> signals.readCSV or buffer.liveRollingBuffer
--> signals.buildSignals
--> buildMLData
--> ml.buildFeatureVector
--> buildClassifierModel
--> ml.loadModel
--> ml.buildFeatureTensor
--> ml.runInference
--> ml.buildProbabilityDict
--> ml.buildPredictedLabel
-```
-
-In plain terms:
-- `main.runCSV(...)` or `main.runLive(...)` builds one current signal block
+- `main.runLive(...)` builds one current signal block
 - `buildMLData(...)` turns that block into the same features used in
   training
 - the saved model weights are loaded
 - the model returns class probabilities
 - the top probability becomes the predicted label
 
-## Why These ML Settings Exist
+## ML Settings
 Main ML config in `main.py`:
 - `hiddenSize = 32`
+    How wide the hidden layers are. Bigger can learn more, but also adds
+    weight and can overfit faster. Small model, enough room to learn, still light
 - `epochCount = 200`
+    How many times the model sees the full training set.
+    Gives the small dense model time to settle
 - `learningRate = 0.001`
-
-What they mean:
-- `hiddenSize`
-  How wide the hidden layers are. Bigger can learn more, but also adds
-  weight and can overfit faster.
-- `epochCount`
-  How many times the model sees the full training set.
-- `learningRate`
-  How big each optimiser update step is during training.
-
-Why they are needed:
-- without `hiddenSize`, the network shape is incomplete
-- without `epochCount`, training has no stopping point
-- without `learningRate`, the optimiser has no step size
-
-Why these values are a reasonable start:
-- `hiddenSize = 32`
-  Small model, enough room to learn, still light
-- `epochCount = 200`
-  Gives the small dense model time to settle
-- `learningRate = 0.001`
-  Common safe starting point for Adam
-
-## Labelling And Capture
-Labelling recommendations:
-- keep one physical condition per CSV file
-- use the folder name as the ground-truth label
-- keep raw schema identical across all captures
-- keep sample rate identical across all captures
-- split train, validation, and test by capture file, not by window
-- do not let windows from one CSV land in multiple dataset splits
-- record `multipleFailures` only after single-fault captures exist
-
-Capture recommendations:
-- record a healthy baseline at the start of each session
-- capture each fault condition in separate files
-- hold rpm and load steady inside a labelled file when possible
-- record several takes per condition across different sessions
-- capture startup, steady-state, and shutdown as separate files
-- keep enough duration per file to create many 1-second windows
-- store notes for motor, rig, mount, load, rpm, ambient temperature,
-  and induced fault
+    How big each optimiser update step is during training.
+    Common safe starting point for Adam
 
 ## Dependencies
-- `numpy`
-- `pandas`
-- `pyserial`
-- `matplotlib`
-- `torch`
-
 Install:
-
 ```bash
 python3 -m pip install numpy pandas pyserial matplotlib torch
 ```
 
 ## Commands
 CSV replay:
-
 ```bash
 python3 src/main.py csv
 ```
 
 Offline training:
-
 ```bash
 python3 src/main.py train
 ```
 
 Live processing:
-
 ```bash
 python3 src/main.py live
 ```
 
-Raw serial monitor:
+## FFT Testing Notes
+When testing FFT or DFFT plots, the two main levers are:
+- sample rate
+- sample length
 
+Sample rate controls the frequency axis scaling.
+If the sample rate is wrong or unknown, the plotted peak positions in Hz
+will also be wrong.
+
+Sample length controls frequency resolution.
+Resolution is:
+- `frequencyResolutionHz = sampleRate / sampleCount`
+
+Longer captures give tighter peak separation and more reliable
+fundamental estimation.
+Short captures make peaks broader and less stable.
+
+For the current web CSV test data, FFT output should only be treated as a
+pipeline and plotting test.
+It should not be treated as physically correct motor frequency truth,
+because the real sample rate is unknown.
+
+Use the real CSV FFT harness here for quick testing:
 ```bash
-python3 serial_harness/serialPrint.py
+python3 Tests/fft_axis_harness.py
 ```
 
+That harness is useful for checking:
+- CSV read path
+- time-domain plotting
+- frequency-domain plotting
+- how peak placement changes when `sampleRate` and `bufferSeconds` are
+  changed
+
+For real-world motor interpretation, the minimum useful conditions are:
+- known sample rate
+- longer stable capture duration
+- one steady motor speed during the capture
+
+
 ## Current Limits
-- current sample CSVs are scaffold data, not validated real fault captures
-- current ML feature count is 232, so saved models must be retrained when
-  the feature set changes
+- current sample CSVs are test data from the web and there is no known sample rate.
 - model quality will depend more on capture discipline than model depth
 - live charting and terminal redraw are still unfinished

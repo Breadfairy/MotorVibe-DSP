@@ -2,7 +2,7 @@ import charting
 
 
 # Prints a short summary of the current signal outputs.
-def printSignalSummary(signalData):
+def printSigSum(signalData):
     rawSignals = signalData["rawSignals"]
     timeSignals = signalData["timeSignals"]
     freqSignals = signalData["freqSignals"]
@@ -30,7 +30,7 @@ def printSignalSummary(signalData):
 
 
 # Prints a short summary of the current ML-ready outputs.
-def printMLSummary(signalData):
+def printMlSum(signalData):
     mlData = signalData["mlData"]
     print("featureCount:", len(mlData["featureNames"]))
     print("featureVectorShape:", mlData["featureVector"].shape)
@@ -42,7 +42,7 @@ def printMLSummary(signalData):
 
 
 # Prints a short summary of the current training dataset and result.
-def printTrainingSummary(trainingData):
+def printTrainSum(trainingData):
     trainingSet = trainingData["trainingSet"]
     print("trainingFeatureShape:", trainingSet["featureMatrix"].shape)
     print("trainingLabelShape:", trainingSet["labelVector"].shape)
@@ -55,26 +55,31 @@ def printTrainingSummary(trainingData):
 
 
 # Prints the current CSV replay summary to the terminal.
-def printCSVSummary(csvPath, sensorColumns, signalData):
+def printCsvSum(csvPath, sensorColumns, signalData):
     print("csvPath:", csvPath)
     print("sensorColumns:", sensorColumns)
     print("bufferMeta:", signalData["bufferMeta"])
     print("signalMeta:", signalData["signalMeta"])
     print("bufferFrameHead:")
     print(signalData["bufferFrame"].head())
-    printSignalSummary(signalData)
-    printMLSummary(signalData)
+    printSigSum(signalData)
+    printMlSum(signalData)
 
 
 # Prints the current live sensing summary to the terminal.
-def printLiveSummary(sensorColumns, signalData):
+def printLiveSum(sensorColumns, signalData):
     print("sensorColumns:", sensorColumns)
     print("bufferMeta:", signalData["bufferMeta"])
     print("signalMeta:", signalData["signalMeta"])
-    printSignalSummary(signalData)
-    printMLSummary(signalData)
+    printSigSum(signalData)
+    printMlSum(signalData)
 
 
 # Renders the current raw chart image.
 def plotRaw(signalData, savePath):
     charting.plotRaw(signalData, savePath)
+
+
+# Renders the current frequency chart image.
+def plotFrequency(signalData, savePath):
+    charting.plotFrequency(signalData, savePath)

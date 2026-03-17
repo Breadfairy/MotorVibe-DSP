@@ -4,7 +4,7 @@ import serial
 
 
 # Returns the current target motor sensor column order.
-def buildMotorColumns():
+def motorCols():
     sensorColumns = [
         "sample",
         "mpu1AccX",
@@ -28,7 +28,7 @@ def buildMotorColumns():
 
 
 # Converts the current buffer frame into named NumPy float64 arrays.
-def buildBufferArrays(bufferFrame, sensorColumns):
+def bufArrs(bufferFrame, sensorColumns):
     bufferArrays = {}
     for sensorColumn in sensorColumns:
         bufferArrays[sensorColumn] = bufferFrame[sensorColumn].to_numpy(
@@ -38,7 +38,7 @@ def buildBufferArrays(bufferFrame, sensorColumns):
 
 
 # Builds metadata that describes the current fixed-size buffer window.
-def buildBufferMeta(sampleRate, bufferSeconds, startRow, sampleCount):
+def bufMeta(sampleRate, bufferSeconds, startRow, sampleCount):
     bufferMeta = {
         "sampleRate": sampleRate,
         "bufferSeconds": bufferSeconds,
@@ -50,12 +50,15 @@ def buildBufferMeta(sampleRate, bufferSeconds, startRow, sampleCount):
 
 
 # Slices a fixed-size buffer window from a DataFrame.
-def buildBuffer(dataFrame, sensorColumns, sampleRate, bufferSeconds, startRow):
-    sampleCount = int(sampleRate * bufferSeconds)
-    endRow = startRow + sampleCount
-    bufferFrame = dataFrame.iloc[startRow:endRow].reset_index(drop=True)
-    bufferArrays = buildBufferArrays(bufferFrame, sensorColumns)
-    bufferMeta = buildBufferMeta(
+def buildBuf(dataFrame, sensorColumns, sampleRate, bufferSeconds, startRow):
+    targetSampleCount = int(sampleRate * bufferSeconds)
+    endRow = startRow + targetSampleCount
+    bufferFrame = dataFrame.iloc[startRow:endRow][sensorColumns].reset_index(
+        drop=True
+    )
+    sampleCount = bufferFrame.shape[0]
+    bufferArrays = bufArrs(bufferFrame, sensorColumns)
+    bufferMeta = bufMeta(
         sampleRate,
         bufferSeconds,
         startRow,
@@ -70,13 +73,13 @@ def buildBuffer(dataFrame, sensorColumns, sampleRate, bufferSeconds, startRow):
 
 
 # Converts serial row values into a DataFrame with the active schema.
-def buildRowsFrame(rows, sensorColumns):
+def rowsDf(rows, sensorColumns):
     rowsFrame = pd.DataFrame(rows, columns=sensorColumns)
     return rowsFrame
 
 
 # Reads a fixed number of serial rows from an open link.
-def readSerialRows(link, rowCount, delimiter, encoding):
+def readRows(link, rowCount, delimiter, encoding):
     rows = []
     for _ in range(rowCount):
         line = link.readline().decode(encoding).strip()
@@ -85,7 +88,7 @@ def readSerialRows(link, rowCount, delimiter, encoding):
 
 
 # Drops the oldest rows and appends new rows onto the current buffer.
-def updateRollingBuffer(
+def rollBuf(
     bufferData,
     newRowsFrame,
     sensorColumns,
@@ -100,8 +103,9 @@ def updateRollingBuffer(
         ignore_index=True,
     )
     bufferFrame = combinedFrame.iloc[-sampleCount:].reset_index(drop=True)
-    bufferArrays = buildBufferArrays(bufferFrame, sensorColumns)
-    bufferMeta = buildBufferMeta(
+    sampleCount = bufferFrame.shape[0]
+    bufferArrays = bufArrs(bufferFrame, sensorColumns)
+    bufferMeta = bufMeta(
         sampleRate,
         bufferSeconds,
         startRow,
@@ -116,7 +120,7 @@ def updateRollingBuffer(
 
 
 # Reads CSV data and slices the current fixed-size buffer window.
-def readCSVBuffer(
+def readCSVBuf(
     csvPath,
     sensorColumns,
     sampleRate,
@@ -124,7 +128,7 @@ def readCSVBuffer(
     startRow,
 ):
     dataFrame = pd.read_csv(csvPath)
-    return buildBuffer(
+    return buildBuf(
         dataFrame,
         sensorColumns,
         sampleRate,
@@ -134,7 +138,7 @@ def readCSVBuffer(
 
 
 # Reads one fixed-size buffer window from a live serial stream.
-def liveBuffer(
+def liveBuf(
     port,
     sensorColumns,
     sampleRate,
@@ -146,9 +150,9 @@ def liveBuffer(
 ):
     sampleCount = int(sampleRate * bufferSeconds)
     with serial.Serial(port=port, baudrate=baudrate, timeout=timeout) as link:
-        rows = readSerialRows(link, sampleCount, delimiter, encoding)
-    dataFrame = buildRowsFrame(rows, sensorColumns)
-    return buildBuffer(
+        rows = readRows(link, sampleCount, delimiter, encoding)
+    dataFrame = rowsDf(rows, sensorColumns)
+    return buildBuf(
         dataFrame,
         sensorColumns,
         sampleRate,
@@ -158,7 +162,7 @@ def liveBuffer(
 
 
 # Yields rolling live buffers with a fixed-size window and stepped overlap.
-def liveRollingBuffer(
+def liveRoll(
     port,
     sensorColumns,
     sampleRate,
@@ -172,9 +176,9 @@ def liveRollingBuffer(
     sampleCount = int(sampleRate * bufferSeconds)
     stepCount = int(sampleRate * stepSeconds)
     with serial.Serial(port=port, baudrate=baudrate, timeout=timeout) as link:
-        initialRows = readSerialRows(link, sampleCount, delimiter, encoding)
-        initialFrame = buildRowsFrame(initialRows, sensorColumns)
-        bufferData = buildBuffer(
+        initialRows = readRows(link, sampleCount, delimiter, encoding)
+        initialFrame = rowsDf(initialRows, sensorColumns)
+        bufferData = buildBuf(
             initialFrame,
             sensorColumns,
             sampleRate,
@@ -184,9 +188,9 @@ def liveRollingBuffer(
         yield bufferData
 
         while True:
-            newRows = readSerialRows(link, stepCount, delimiter, encoding)
-            newRowsFrame = buildRowsFrame(newRows, sensorColumns)
-            bufferData = updateRollingBuffer(
+            newRows = readRows(link, stepCount, delimiter, encoding)
+            newRowsFrame = rowsDf(newRows, sensorColumns)
+            bufferData = rollBuf(
                 bufferData,
                 newRowsFrame,
                 sensorColumns,

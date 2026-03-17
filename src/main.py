@@ -9,21 +9,21 @@ import ml
 import signals
 
 #paths 
-csvPath = "data/testData/nivel2.csv"
+csvPath = "data/testData/test.csv"
 trainingDataDirPath = "data/train"
 outputDirPath = "outputs/csv"
 modelPath = "outputs/models/motorClassifier.pth"
 
 #signal dicts
-sensorColumns = signals.buildMotorColumns()
+sensorColumns = buffer.motorCols()
 frequencyBands = [
-    ("Energy1_A", 0, 49),
-    ("Energy2_A", 50, 149),
-    ("Energy3_A", 150, 300),
+    ("Energy1_A", 0, 99),
+    ("Energy2_A", 100, 249),
+    ("Energy3_A", 250, 500),
 ]
 
 #buffering variables
-sampleRate = 100
+sampleRate = 1000
 csvBufferSeconds = 1
 liveBufferSeconds = 2
 liveStepSeconds = 0.25
@@ -40,19 +40,19 @@ serialEncoding = "utf-8"
 trainingWindowSeconds = 1
 trainingStepSeconds = 1
 startRow = 0
-tempWindowSeconds = 0.1
-featureNames = ml.buildFeatureNames(sampleRate)
-failureNames = ml.buildFailureNames()
-failureIndexes = ml.buildFailureIndexes(failureNames)
+tempWindowSeconds = 0.01
+featureNames = ml.featureNames(sampleRate)
+failureNames = ml.failureNames()
+failureIndexes = ml.failureIndexes(failureNames)
 hiddenSize = 32
 epochCount = 200
 learningRate = 0.001
 
 
 # Builds one classifier instance from the configured feature and label sizes.
-def buildClassifierModel():
-    modelSizes = ml.buildModelSizes(featureNames, failureNames, hiddenSize)
-    model = ml.buildModel(
+def clfModel():
+    modelSizes = ml.modelSizes(featureNames, failureNames, hiddenSize)
+    model = ml.model(
         modelSizes["inputSize"],
         modelSizes["hiddenSize"],
         modelSizes["outputSize"],
@@ -61,7 +61,7 @@ def buildClassifierModel():
 
 
 # Builds the label-to-CSV training map from the training directory layout.
-def buildLabelledCsvPaths(trainingDataDirPath):
+def labelCsvPaths(trainingDataDirPath):
     trainingDataDir = Path(trainingDataDirPath)
     labelledCsvPaths = {}
     for failureName in failureNames:
@@ -76,8 +76,8 @@ def buildLabelledCsvPaths(trainingDataDirPath):
 
 
 # Builds ML feature and optional inference output from the current signal data.
-def buildMLData(signalData, modelPath):
-    featureVector = ml.buildFeatureVector(signalData, featureNames)
+def mlData(signalData, modelPath):
+    featureVector = ml.featureVector(signalData, featureNames)
     mlData = {
         "featureNames": featureNames,
         "featureVector": featureVector,
@@ -85,16 +85,16 @@ def buildMLData(signalData, modelPath):
         "failureIndexes": failureIndexes,
     }
     if Path(modelPath).exists():
-        model = buildClassifierModel()
+        model = clfModel()
         model = ml.loadModel(model, modelPath)
         featureMatrix = np.expand_dims(featureVector, axis=0)
-        featureTensor = ml.buildFeatureTensor(featureMatrix)
+        featureTensor = ml.featureTensor(featureMatrix)
         probabilityTensor = ml.runInference(model, featureTensor)
-        probabilityDict = ml.buildProbabilityDict(
+        probabilityDict = ml.probabilityDict(
             probabilityTensor,
             failureNames,
         )
-        predictedLabel = ml.buildPredictedLabel(
+        predictedLabel = ml.predictedLabel(
             probabilityTensor,
             failureNames,
         )
@@ -114,14 +114,20 @@ def runCSV(csvPath, modelPath):
         tempWindowSeconds,
         frequencyBands,
     )
-    signalData["mlData"] = buildMLData(signalData, modelPath)
-    gui.printCSVSummary(csvPath, sensorColumns, signalData)
+    signalData["mlData"] = mlData(signalData, modelPath)
+    gui.printCsvSum(csvPath, sensorColumns, signalData)
 
     plotRawPath = str(
         Path(outputDirPath) / (Path(csvPath).stem + "_plotRaw.png")
     )
     gui.plotRaw(signalData, plotRawPath)
     print("plotRawPath:", plotRawPath)
+
+    plotFrequencyPath = str(
+        Path(outputDirPath) / (Path(csvPath).stem + "_plotFrequency.png")
+    )
+    gui.plotFrequency(signalData, plotFrequencyPath)
+    print("plotFrequencyPath:", plotFrequencyPath)
 
     return signalData
 
@@ -135,7 +141,7 @@ def runLive(
     encoding,
     modelPath,
 ):
-    for bufferData in buffer.liveRollingBuffer(
+    for bufferData in buffer.liveRoll(
         port,
         sensorColumns,
         sampleRate,
@@ -146,20 +152,20 @@ def runLive(
         timeout,
         encoding,
     ):
-        signalData = signals.buildSignals(
+        signalData = signals.buildSigs(
             bufferData,
             sampleRate,
             tempWindowSeconds,
             frequencyBands,
         )
-        signalData["mlData"] = buildMLData(signalData, modelPath)
-        gui.printLiveSummary(sensorColumns, signalData)
+        signalData["mlData"] = mlData(signalData, modelPath)
+        gui.printLiveSum(sensorColumns, signalData)
 
 
 # Orchestrates labelled CSV training, model fitting, and weight saving.
 def runTraining(trainingDataDirPath, modelPath):
-    labelledCsvPaths = buildLabelledCsvPaths(trainingDataDirPath)
-    trainingSet = ml.buildTrainingSet(
+    labelledCsvPaths = labelCsvPaths(trainingDataDirPath)
+    trainingSet = ml.trainingSet(
         labelledCsvPaths,
         sensorColumns,
         sampleRate,
@@ -170,9 +176,9 @@ def runTraining(trainingDataDirPath, modelPath):
         featureNames,
         failureIndexes,
     )
-    featureTensor = ml.buildFeatureTensor(trainingSet["featureMatrix"])
-    labelTensor = ml.buildLabelTensor(trainingSet["labelVector"])
-    model = buildClassifierModel()
+    featureTensor = ml.featureTensor(trainingSet["featureMatrix"])
+    labelTensor = ml.labelTensor(trainingSet["labelVector"])
+    model = clfModel()
     lossHistory = ml.trainModel(
         model,
         featureTensor,
@@ -184,8 +190,8 @@ def runTraining(trainingDataDirPath, modelPath):
     ml.saveModel(model, modelPath)
 
     probabilityTensor = ml.runInference(model, featureTensor[:1])
-    probabilityDict = ml.buildProbabilityDict(probabilityTensor, failureNames)
-    predictedLabel = ml.buildPredictedLabel(probabilityTensor, failureNames)
+    probabilityDict = ml.probabilityDict(probabilityTensor, failureNames)
+    predictedLabel = ml.predictedLabel(probabilityTensor, failureNames)
     trainingData = {
         "trainingSet": trainingSet,
         "lossHistory": lossHistory,
@@ -193,7 +199,7 @@ def runTraining(trainingDataDirPath, modelPath):
         "probabilityDict": probabilityDict,
         "predictedLabel": predictedLabel,
     }
-    gui.printTrainingSummary(trainingData)
+    gui.printTrainSum(trainingData)
     return trainingData
 
 

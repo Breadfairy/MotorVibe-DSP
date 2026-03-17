@@ -9,7 +9,7 @@ import signals
 
 
 # Returns the ordered feature names used by the ML model.
-def buildFeatureNames(sampleRate):
+def featureNames(sampleRate):
     targetBinCount = int(sampleRate / 2) + 1
     featureNames = [
         "mpu1AccMagDomFreq",
@@ -50,7 +50,7 @@ def buildFeatureNames(sampleRate):
 
 
 # Returns the ordered failure-state names used by the classifier.
-def buildFailureNames():
+def failureNames():
     failureNames = [
         "healthy",
         "looseMounting",
@@ -63,7 +63,7 @@ def buildFailureNames():
 
 
 # Returns the failure-state descriptions keyed by state name.
-def buildFailureDescriptions():
+def failureDescriptions():
     failureDescriptions = {
         "healthy": "Normal operation baseline block.",
         "looseMounting": "Mounting screws or bolts have loosened.",
@@ -76,7 +76,7 @@ def buildFailureDescriptions():
 
 
 # Returns the integer label index for each failure-state name.
-def buildFailureIndexes(failureNames):
+def failureIndexes(failureNames):
     failureIndexes = {}
     for index, failureName in enumerate(failureNames):
         failureIndexes[failureName] = index
@@ -84,7 +84,7 @@ def buildFailureIndexes(failureNames):
 
 
 # Builds one fixed-size axis-power spectrum feature dictionary.
-def buildSpectrumFeatureDict(
+def spectrumFeatureDict(
     frequencyAxis,
     spectrum,
     signalPrefix,
@@ -108,7 +108,7 @@ def buildSpectrumFeatureDict(
 
 
 # Builds one named feature dictionary from the current signal data.
-def buildFeatureDict(signalData):
+def featureDict(signalData):
     sampleRate = signalData["signalMeta"]["sampleRate"]
     timeSignals = signalData["timeSignals"]
     freqSignals = signalData["freqSignals"]
@@ -168,7 +168,7 @@ def buildFeatureDict(signalData):
     }
     for signalPrefix in ["mpu1Acc", "mpu1Gyr", "mpu2Acc", "mpu2Gyr"]:
         featureDict.update(
-            buildSpectrumFeatureDict(
+            spectrumFeatureDict(
                 freqSignals["frequencyAxis"],
                 freqSignals[f"{signalPrefix}AxisPowerSpectrum"],
                 signalPrefix,
@@ -179,17 +179,17 @@ def buildFeatureDict(signalData):
 
 
 # Builds one ordered NumPy feature vector from the current signal data.
-def buildFeatureVector(signalData, featureNames):
-    featureDict = buildFeatureDict(signalData)
+def featureVector(signalData, featureNames):
+    featDict = featureDict(signalData)
     featureVector = np.array(
-        [featureDict[featureName] for featureName in featureNames],
+        [featDict[featureName] for featureName in featureNames],
         dtype=np.float32,
     )
     return featureVector
 
 
 # Builds valid start rows for repeated fixed-size training windows.
-def buildWindowStartRows(rowCount, sampleRate, windowSeconds, stepSeconds):
+def windowStartRows(rowCount, sampleRate, windowSeconds, stepSeconds):
     windowSamples = int(sampleRate * windowSeconds)
     stepSamples = int(sampleRate * stepSeconds)
     lastStartRow = rowCount - windowSamples
@@ -200,7 +200,7 @@ def buildWindowStartRows(rowCount, sampleRate, windowSeconds, stepSeconds):
 
 
 # Builds one signal window from a CSV DataFrame slice.
-def buildWindowSignalData(
+def windowSignalData(
     dataFrame,
     sensorColumns,
     sampleRate,
@@ -209,14 +209,14 @@ def buildWindowSignalData(
     tempWindowSeconds,
     frequencyBands,
 ):
-    bufferData = buffer.buildBuffer(
+    bufferData = buffer.buildBuf(
         dataFrame,
         sensorColumns,
         sampleRate,
         windowSeconds,
         startRow,
     )
-    signalData = signals.buildSignals(
+    signalData = signals.buildSigs(
         bufferData,
         sampleRate,
         tempWindowSeconds,
@@ -226,7 +226,7 @@ def buildWindowSignalData(
 
 
 # Builds labelled feature rows from repeated windows of one CSV file.
-def buildLabelledFeatureRows(
+def labelledFeatureRows(
     csvPath,
     labelName,
     sensorColumns,
@@ -239,7 +239,7 @@ def buildLabelledFeatureRows(
     failureIndexes,
 ):
     dataFrame = pd.read_csv(csvPath)
-    startRows = buildWindowStartRows(
+    startRows = windowStartRows(
         dataFrame.shape[0],
         sampleRate,
         windowSeconds,
@@ -248,7 +248,7 @@ def buildLabelledFeatureRows(
     featureRows = []
     labelNames = []
     for startRow in startRows:
-        signalData = buildWindowSignalData(
+        signalData = windowSignalData(
             dataFrame,
             sensorColumns,
             sampleRate,
@@ -257,8 +257,8 @@ def buildLabelledFeatureRows(
             tempWindowSeconds,
             frequencyBands,
         )
-        featureVector = buildFeatureVector(signalData, featureNames)
-        featureRows.append(featureVector)
+        featVec = featureVector(signalData, featureNames)
+        featureRows.append(featVec)
         labelNames.append(labelName)
     featureMatrix = np.vstack(featureRows)
     labelVector = encodeLabels(labelNames, failureIndexes)
@@ -272,7 +272,7 @@ def buildLabelledFeatureRows(
 
 
 # Builds one combined training set from multiple labelled CSV files.
-def buildTrainingSet(
+def trainingSet(
     labelledCsvPaths,
     sensorColumns,
     sampleRate,
@@ -288,7 +288,7 @@ def buildTrainingSet(
     datasetMeta = []
     for labelName, csvPaths in labelledCsvPaths.items():
         for csvPath in csvPaths:
-            labelledRows = buildLabelledFeatureRows(
+            labelledRows = labelledFeatureRows(
                 csvPath,
                 labelName,
                 sensorColumns,
@@ -327,13 +327,13 @@ def encodeLabels(labelNames, failureIndexes):
 
 
 # Converts feature vectors into a PyTorch float tensor.
-def buildFeatureTensor(featureMatrix):
+def featureTensor(featureMatrix):
     featureTensor = torch.tensor(featureMatrix, dtype=torch.float32)
     return featureTensor
 
 
 # Converts integer labels into a PyTorch long tensor.
-def buildLabelTensor(labelVector):
+def labelTensor(labelVector):
     labelTensor = torch.tensor(labelVector, dtype=torch.long)
     return labelTensor
 
@@ -358,13 +358,13 @@ class MotorClassifier(nn.Module):
 
 
 # Builds the motor classifier instance.
-def buildModel(inputSize, hiddenSize, outputSize):
+def model(inputSize, hiddenSize, outputSize):
     model = MotorClassifier(inputSize, hiddenSize, outputSize)
     return model
 
 
 # Builds the default model sizes from the configured feature and label sets.
-def buildModelSizes(featureNames, failureNames, hiddenSize):
+def modelSizes(featureNames, failureNames, hiddenSize):
     modelSizes = {
         "inputSize": len(featureNames),
         "hiddenSize": hiddenSize,
@@ -396,7 +396,7 @@ def runInference(model, featureTensor):
 
 
 # Builds a named probability dictionary from one inference output row.
-def buildProbabilityDict(probabilityTensor, failureNames):
+def probabilityDict(probabilityTensor, failureNames):
     probabilityRow = probabilityTensor.detach().cpu().numpy()[0]
     probabilityDict = {}
     for index, failureName in enumerate(failureNames):
@@ -405,7 +405,7 @@ def buildProbabilityDict(probabilityTensor, failureNames):
 
 
 # Returns the highest-probability failure-state name.
-def buildPredictedLabel(probabilityTensor, failureNames):
+def predictedLabel(probabilityTensor, failureNames):
     probabilityRow = probabilityTensor.detach().cpu().numpy()[0]
     predictedIndex = int(np.argmax(probabilityRow))
     predictedLabel = failureNames[predictedIndex]
