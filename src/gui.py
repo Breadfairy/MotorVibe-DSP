@@ -11,22 +11,14 @@ def printSigSum(signalData):
     print("mpu2AccMag[:5]:", timeSignals["mpu2AccMag"][:5])
     print("mpu1GyrMag[:5]:", timeSignals["mpu1GyrMag"][:5])
     print("mpu2GyrMag[:5]:", timeSignals["mpu2GyrMag"][:5])
-    print("ds18b20OneAvg[:5]:", timeSignals["ds18b20OneAvg"][:5])
-    print("ds18b20OneGrad[:5]:", timeSignals["ds18b20OneGrad"][:5])
-    print("mpu1AccMagDomFreq:", freqSignals["mpu1AccMagDomFreq"])
-    print("mpu1AccMagDomMag:", freqSignals["mpu1AccMagDomMag"])
-    print(
-        "mpu1AccAxisPowerEnergy1_A:",
-        freqSignals["mpu1AccAxisPowerEnergy1_A"],
-    )
-    print(
-        "mpu1AccAxisPowerEnergy2_A:",
-        freqSignals["mpu1AccAxisPowerEnergy2_A"],
-    )
-    print(
-        "mpu1AccAxisPowerEnergy3_A:",
-        freqSignals["mpu1AccAxisPowerEnergy3_A"],
-    )
+    print("mpu1AccFundamentalHz:", freqSignals["mpu1AccFundamentalHz"])
+    print("mpu1AccFundamentalMag:", freqSignals["mpu1AccFundamentalMag"])
+    print("mpu1AccBpfoBandRms:", freqSignals["mpu1AccBpfoBandRms"])
+    print("mpu1AccBpfiBandRms:", freqSignals["mpu1AccBpfiBandRms"])
+    print("mpu2AccFundamentalHz:", freqSignals["mpu2AccFundamentalHz"])
+    print("mpu2AccFundamentalMag:", freqSignals["mpu2AccFundamentalMag"])
+    print("mpu2AccBpfoBandRms:", freqSignals["mpu2AccBpfoBandRms"])
+    print("mpu2AccBpfiBandRms:", freqSignals["mpu2AccBpfiBandRms"])
 
 
 # Prints a short summary of the current ML-ready outputs.
@@ -34,7 +26,7 @@ def printMlSum(signalData):
     mlData = signalData["mlData"]
     print("featureCount:", len(mlData["featureNames"]))
     print("featureVectorShape:", mlData["featureVector"].shape)
-    print("featureVector[:5]:", mlData["featureVector"][:5])
+    print("featureVector:", mlData["featureVector"])
     print("failureNames:", mlData["failureNames"])
     if "predictedLabel" in mlData:
         print("predictedLabel:", mlData["predictedLabel"])
@@ -75,11 +67,11 @@ def printLiveSum(sensorColumns, signalData):
     printMlSum(signalData)
 
 
-# Renders the current raw chart image.
-def plotRaw(signalData, savePath):
-    charting.plotRaw(signalData, savePath)
+# Renders one sensor exploration chart image for one MPU.
+def plotSensor(signalData, sensorNumber, savePath, plotSeconds):
+    charting.plotSensor(signalData, sensorNumber, savePath, plotSeconds)
 
 
-# Renders the current frequency chart image.
-def plotFrequency(signalData, savePath):
-    charting.plotFrequency(signalData, savePath)
+# Renders one 12-panel per-axis FFT exploration chart image.
+def plotAxisFftGrid(signalData, savePath):
+    charting.plotAxisFftGrid(signalData, savePath)

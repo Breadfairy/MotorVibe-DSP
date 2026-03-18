@@ -1,19 +1,22 @@
 # Motor Signal Pipeline
 
-This repo builds a direct motor sensing pipeline. runs live or via csv
-input. The current program flow  is:
-- read
-- buffer
+Direct Python pipeline for early motor sensing analysis from CSV or live
+serial data.
+
+Current flow:
+- read data
+- build `2s` buffers
+- analyse the latest `1s` period inside the buffer
 - build signals
-- ML
-- gui / visualisation
+- build ML features / inference
+- save exploration charts
 
 ## Hardware
 - ESP32 CP2102 38 Pin Development Board USB-C
-- 2 x MPU6050
-- 2 x DS18B20
+- `2 x MPU6050`
+- `2 x DS18B20`
 
-Current raw field order:
+## Raw Field Order
 - `sample`
 - `mpu1AccX`, `mpu1AccY`, `mpu1AccZ`
 - `mpu1GyrX`, `mpu1GyrY`, `mpu1GyrZ`
@@ -24,241 +27,180 @@ Current raw field order:
 - `ds18b20One`
 - `ds18b20Two`
 
+CSV and live serial data need to follow this exact order.
+
+## Current Program State
+- CSV replay is the main ready path for first captured data.
+- Buffers are `2s` wide across CSV, live, and training preparation.
+- Analysis period is the latest `1s` inside the current `2s` buffer.
+- CSV mode generates three short-period plot groups plus long exploratory
+  plots.
+- Live mode builds the same signals and ML features, but currently only prints
+  summaries.
+- Training code is wired for labelled CSV folders and the current feature
+  shape.
+
 ## File Layout
-- `src/main.py`: top-down orchestration for csv, live, and train modes
-- `src/buffer.py`: fixed-size and rolling live buffer building
-- `src/signals.py`: raw, time-domain, and frequency-domain signals
-- `src/ml.py`: feature extraction, model building, training, inference
-- `src/gui.py`: terminal summaries and output orchestration
-- `src/charting.py`: offline chart image output
-- `serial_harness/serialPrint.py`: basic raw serial line monitor
-- `data/testData/`: scaffold CSV replay data
-- `data/train/`: labelled training captures by condition
-- `outputs/csv/`: saved charts
-- `outputs/models/`: saved model weights
+- `src/main.py`
+  Top-down orchestration for CSV, live, and training modes.
+- `src/buffer.py`
+  Fixed-size and rolling buffer construction.
+- `src/signals.py`
+  Time-domain signals, per-axis FFT summaries, combined acceleration FFT, and
+  bearing band RMS.
+- `src/ml.py`
+  Feature extraction, PyTorch classifier, training, and inference.
+- `src/charting.py`
+  Saved chart output.
+- `src/gui.py`
+  Terminal summaries and chart call wrappers.
+- `Tests/serial_harness/serialPrint.py`
+  Bare serial line print harness.
+- `Tests/fft_axis_harness.py`
+  Standalone FFT harness for quick CSV FFT checks.
 
-## Serial Agreement
-The firmware side and Python side need one agreed serial contract before
-live capture starts.
+## Buffer and Period Model
+- `sampleRate = 1000`
+- `bufferSeconds = 2`
+- `periodSeconds = 1`
+- `liveStepSeconds = 1`
 
-Agree on:
-- baud rate
-- line ending
-- payload delimiter. eg ",".
-- payload field order
-- sample rate
-- whether a header row is sent
-- units and scaling for every field. eg rounding
+Meaning:
+- one `2s` buffer is built
+- the latest `1s` inside that buffer is analysed
+- live mode advances by `1s`
+- training also steps by `1s` while using full `2s` buffers
 
-Recommended first protocol for this repo:
-- text payload
-- UTF-8 encoding
-- one CSV row per sample
-- comma-delimited fields
-- fixed field order matching the raw field list above
-
-Example:
-- `124,0.12,-0.03,9.81,0.10,0.02,-0.01,31.5,0.11,-0.02,9.79,0.09,0.01,-0.02,31.4,28.2,28.1`
-
-## Live Buffering
-Live buffering is rolling rather than disjoint block reads.
-
-Current live flow:
-- fill one 2-second live buffer array
-- read the next live update chunk. array updated every 0.25s
-- drop the oldest rows
-- append the newest rows
-- rebuild signals and ML output on the updated window. (1s window analysis and
-  2s buffer for processing time provisions)
-- repeat
-
-This keeps a fixed live analysis window while allowing overlapped updates.
-
-## Training Data Layout
-
-Use one folder per condition label:
-- `data/train/healthy/*.csv`
-- `data/train/looseMounting/*.csv`
-- `data/train/maxLoading/*.csv`
-- `data/train/minLoading/*.csv`
-- `data/train/offAxis/*.csv`
-- `data/train/multipleFailures/*.csv` (eg, 1 screw loose and off axis)
-
-each failure mode should be run for a minimum 1m. 
-More minutes = more training samples = stronger ML.
-
-
-## Generated Signals
-Time-domain signals:
-- `mpu1AccMag`
-- `mpu1GyrMag`
-- `mpu2AccMag`
-- `mpu2GyrMag`
+## Current Signal Outputs
+Time-domain:
+- `mpu1AccMag`, `mpu1GyrMag`
+- `mpu2AccMag`, `mpu2GyrMag`
 - `mpu1TempAvg`, `mpu1TempGrad`
 - `mpu2TempAvg`, `mpu2TempGrad`
 - `ds18b20OneAvg`, `ds18b20OneGrad`
 - `ds18b20TwoAvg`, `ds18b20TwoGrad`
 
-Frequency-domain signals:
-- `mpu1AccMagDomFreq`, `mpu1AccMagDomMag`
-- `mpu1AccAxisPowerSpectrum`
-- `mpu1AccAxisPowerEnergy1_A`, `mpu1AccAxisPowerEnergy2_A`
-- `mpu1AccAxisPowerEnergy3_A`
-- `mpu1GyrMagDomFreq`, `mpu1GyrMagDomMag`
-- `mpu1GyrAxisPowerSpectrum`
-- `mpu1GyrAxisPowerEnergy1_A`, `mpu1GyrAxisPowerEnergy2_A`
-- `mpu1GyrAxisPowerEnergy3_A`
-- `mpu2AccMagDomFreq`, `mpu2AccMagDomMag`
-- `mpu2AccAxisPowerSpectrum`
-- `mpu2AccAxisPowerEnergy1_A`, `mpu2AccAxisPowerEnergy2_A`
-- `mpu2AccAxisPowerEnergy3_A`
-- `mpu2GyrMagDomFreq`, `mpu2GyrMagDomMag`
-- `mpu2GyrAxisPowerSpectrum`
-- `mpu2GyrAxisPowerEnergy1_A`, `mpu2GyrAxisPowerEnergy2_A`
-- `mpu2GyrAxisPowerEnergy3_A`
+Frequency-domain:
+- per-axis FFT spectra and peak metrics for:
+  `mpu1AccX/Y/Z`, `mpu2AccX/Y/Z`, `mpu1GyrX/Y/Z`, `mpu2GyrX/Y/Z`
+- combined acceleration FFT per MPU:
+  `mpu1AccSpectrum`, `mpu2AccSpectrum`
+- combined acceleration FFT peak metrics:
+  `mpu1AccFundamentalHz`, `mpu1AccFundamentalMag`
+  `mpu2AccFundamentalHz`, `mpu2AccFundamentalMag`
+- bearing metrics from combined acceleration FFT:
+  `BpfoBand`, `BpfiBand`, `BpfoBandRms`, `BpfiBandRms`
 
-Signals used by ML:
-- all `MagDomFreq` and `MagDomMag` values
-- all `AxisPowerEnergy1_A`, `AxisPowerEnergy2_A`, `AxisPowerEnergy3_A`
-- resampled `AxisPowerSpectrum` bins from all 4 motion signals
-- mean of `mpu1TempAvg`, `mpu1TempGrad`
-- mean of `mpu2TempAvg`, `mpu2TempGrad`
-- mean of `ds18b20OneAvg`, `ds18b20OneGrad`
-- mean of `ds18b20TwoAvg`, `ds18b20TwoGrad`
+## Current ML Features
+The current model uses `24` scalar features:
+- accel magnitude mean for each MPU
+- gyro magnitude mean for each MPU
+- MPU temp average mean and temp gradient mean for each MPU
+- DS18B20 temp average mean and temp gradient mean for each sensor
+- accel FFT peak `Hz` and `Mag` for `X`, `Y`, `Z` on each MPU
 
-## Frequency Analysis
-Current prototype frequency analysis follows this flow:
-- build one time-domain window
-- build one real FFT magnitude spectrum
-- detect the dominant fundamental frequency
-- derive shaft speed from that fundamental:
-  `shaftRpm = 60 * fundamentalHz`
-- derive bearing order bands from the fundamental
-- track band RMS over time rather than one single FFT bin peak
+The model does not currently use:
+- full FFT bins
+- bearing RMS features
+- gyro FFT features
 
-Current bearing proof-of-concept uses:
-- `BPFO` on the raw FFT
-- `BPFI` on the raw FFT order band
+## CSV Plot Outputs
+CSV chart output goes to:
+- `outputs/csvCharts/sensors1/`
+- `outputs/csvCharts/sensors2/`
+- `outputs/csvCharts/allFFT/`
+- `outputs/csvCharts/longs/`
 
-Current prototype order bands are:
-- `BPFO`: `3x` to `5x` shaft frequency with `+/- 10%` tolerance
-- `BPFI`: `5x` to `7x` shaft frequency with `+/- 10%` tolerance
+Regular short-period outputs:
+- sensor 1 plots: `s1p1.png`, `s1p2.png`, `s1p3.png`
+- sensor 2 plots: `s2p1.png`, `s2p2.png`, `s2p3.png`
+- axis FFT grids: `fftp1.png`, `fftp2.png`, `fftp3.png`
 
-The main levers are:
-- sample rate:
-  sets the max observable frequency and the frequency axis scaling
-- sample length:
-  sets frequency resolution using
-  `frequencyResolutionHz = sampleRate / sampleCount`
+Long exploratory outputs:
+- `s1l.png`
+- `s2l.png`
+- `fftl.png`
 
-At `1000 Hz` sample rate:
-- Nyquist is `500 Hz`
-- low-frequency order tracking is still usable
-- fundamental, BPFO, and BPFI order bands can still be tracked with FFT if
-  they fall below `500 Hz`
+Current chart types:
+- one `3 x 2` sensor chart per MPU:
+  accMag, gyroMag, MPU temp, DS18B20 temp, combined accel FFT, bearing RMS
+- one `12` panel axis FFT grid:
+  all accel and gyro axes for both MPUs
 
-For the current planned build, this means:
-- shaft frequency tracking is fine
-- BPFO FFT band tracking is fine
-- BPFI FFT band tracking is fine as a prototype feature
+## Serial Agreement
+Firmware and Python need one agreed serial contract before live sensing starts.
 
-## ML Program Flow
-There are really two ML paths in this repo:
-- training from labelled CSV files
-- live from one current signal block
+Agree on:
+- baud rate
+- delimiter
+- line ending
+- field order
+- units / scaling
+- sample rate
+- whether a header row is sent
 
-Training flow:
-- scan label folders
-- slice each CSV into 1-second windows
-- build one feature vector per window
-- stack all windows into one training set
-- train the model
-- save weights for later inference
+Recommended first pass:
+- text payload
+- UTF-8
+- one CSV row per sample
+- comma-delimited
+- fixed field order matching this README
 
-Live flow:
+Example:
+- `124,0.12,-0.03,9.81,0.10,0.02,-0.01,31.5,0.11,-0.02,9.79,0.09,0.01,-0.02,31.4,28.2,28.1`
 
-- `main.runLive(...)` builds one current signal block
-- `buildMLData(...)` turns that block into the same features used in
-  training
-- the saved model weights are loaded
-- the model returns class probabilities
-- the top probability becomes the predicted label
+## Training Data Layout
+Use one folder per label:
+- `data/train/healthy/*.csv`
+- `data/train/looseMounting/*.csv`
+- `data/train/maxLoading/*.csv`
+- `data/train/minLoading/*.csv`
+- `data/train/offAxis/*.csv`
+- `data/train/multipleFailures/*.csv`
 
-## ML Settings
-Main ML config in `main.py`:
-- `hiddenSize = 32`
-    How wide the hidden layers are. Bigger can learn more, but also adds
-    weight and can overfit faster. Small model, enough room to learn, still light
-- `epochCount = 200`
-    How many times the model sees the full training set.
-    Gives the small dense model time to settle
-- `learningRate = 0.001`
-    How big each optimiser update step is during training.
-    Common safe starting point for Adam
+Each CSV should follow the raw field order listed above.
 
 ## Dependencies
 Install:
+
 ```bash
-python3 -m pip install numpy pandas pyserial matplotlib torch
+python3 -m pip install numpy pandas pyserial matplotlib torch scipy
 ```
 
 ## Commands
 CSV replay:
+
 ```bash
 python3 src/main.py csv
 ```
 
 Offline training:
+
 ```bash
 python3 src/main.py train
 ```
 
 Live processing:
+
 ```bash
 python3 src/main.py live
 ```
 
-## FFT Testing Notes
-When testing FFT or DFFT plots, the two main levers are:
-- sample rate
-- sample length
+FFT harness:
 
-Sample rate controls the frequency axis scaling.
-If the sample rate is wrong or unknown, the plotted peak positions in Hz
-will also be wrong.
-
-Sample length controls frequency resolution.
-Resolution is:
-- `frequencyResolutionHz = sampleRate / sampleCount`
-
-Longer captures give tighter peak separation and more reliable
-fundamental estimation.
-Short captures make peaks broader and less stable.
-
-For the current web CSV test data, FFT output should only be treated as a
-pipeline and plotting test.
-It should not be treated as physically correct motor frequency truth,
-because the real sample rate is unknown.
-
-Use the real CSV FFT harness here for quick testing:
 ```bash
 python3 Tests/fft_axis_harness.py
 ```
 
-That harness is useful for checking:
-- CSV read path
-- time-domain plotting
-- frequency-domain plotting
-- how peak placement changes when `sampleRate` and `bufferSeconds` are
-  changed
+Serial raw print harness:
 
-For real-world motor interpretation, the minimum useful conditions are:
-- known sample rate
-- longer stable capture duration
-- one steady motor speed during the capture
-
+```bash
+python3 Tests/serial_harness/serialPrint.py
+```
 
 ## Current Limits
-- current sample CSVs are test data from the web and there is no known sample rate.
-- model quality will depend more on capture discipline than model depth
-- live charting and terminal redraw are still unfinished
+- default CSV path still assumes you place `test.csv` in the expected location
+- live chart streaming is not implemented yet
+- real model quality depends entirely on the first correctly structured capture
+  set
+- current bearing metrics are exploratory features, not trained labels

@@ -10,42 +10,32 @@ import signals
 
 # Returns the ordered feature names used by the ML model.
 def featureNames(sampleRate):
-    targetBinCount = int(sampleRate / 2) + 1
     featureNames = [
-        "mpu1AccMagDomFreq",
-        "mpu1AccMagDomMag",
-        "mpu1AccAxisPowerEnergy1_A",
-        "mpu1AccAxisPowerEnergy2_A",
-        "mpu1AccAxisPowerEnergy3_A",
-        "mpu1GyrMagDomFreq",
-        "mpu1GyrMagDomMag",
-        "mpu1GyrAxisPowerEnergy1_A",
-        "mpu1GyrAxisPowerEnergy2_A",
-        "mpu1GyrAxisPowerEnergy3_A",
-        "mpu2AccMagDomFreq",
-        "mpu2AccMagDomMag",
-        "mpu2AccAxisPowerEnergy1_A",
-        "mpu2AccAxisPowerEnergy2_A",
-        "mpu2AccAxisPowerEnergy3_A",
-        "mpu2GyrMagDomFreq",
-        "mpu2GyrMagDomMag",
-        "mpu2GyrAxisPowerEnergy1_A",
-        "mpu2GyrAxisPowerEnergy2_A",
-        "mpu2GyrAxisPowerEnergy3_A",
+        "mpu1AccMagMean",
+        "mpu1GyrMagMean",
         "mpu1TempAvgMean",
         "mpu1TempGradMean",
-        "mpu2TempAvgMean",
-        "mpu2TempGradMean",
         "ds18b20OneAvgMean",
         "ds18b20OneGradMean",
+        "mpu1AccXFundamentalHz",
+        "mpu1AccXFundamentalMag",
+        "mpu1AccYFundamentalHz",
+        "mpu1AccYFundamentalMag",
+        "mpu1AccZFundamentalHz",
+        "mpu1AccZFundamentalMag",
+        "mpu2AccMagMean",
+        "mpu2GyrMagMean",
+        "mpu2TempAvgMean",
+        "mpu2TempGradMean",
         "ds18b20TwoAvgMean",
         "ds18b20TwoGradMean",
+        "mpu2AccXFundamentalHz",
+        "mpu2AccXFundamentalMag",
+        "mpu2AccYFundamentalHz",
+        "mpu2AccYFundamentalMag",
+        "mpu2AccZFundamentalHz",
+        "mpu2AccZFundamentalMag",
     ]
-    for signalPrefix in ["mpu1Acc", "mpu1Gyr", "mpu2Acc", "mpu2Gyr"]:
-        for frequencyHz in range(targetBinCount):
-            featureNames.append(
-                f"{signalPrefix}AxisPowerSpectrumHz{frequencyHz}"
-            )
     return featureNames
 
 
@@ -83,98 +73,60 @@ def failureIndexes(failureNames):
     return failureIndexes
 
 
-# Builds one fixed-size axis-power spectrum feature dictionary.
-def spectrumFeatureDict(
-    frequencyAxis,
-    spectrum,
-    signalPrefix,
-    sampleRate,
-):
-    targetFrequencyAxis = np.arange(
-        int(sampleRate / 2) + 1,
-        dtype=np.float64,
-    )
-    resampledSpectrum = np.interp(
-        targetFrequencyAxis,
-        frequencyAxis,
-        spectrum,
-    )
-    spectrumFeatureDict = {}
-    for frequencyHz, spectrumValue in enumerate(resampledSpectrum):
-        spectrumFeatureDict[
-            f"{signalPrefix}AxisPowerSpectrumHz{frequencyHz}"
-        ] = spectrumValue
-    return spectrumFeatureDict
-
-
 # Builds one named feature dictionary from the current signal data.
 def featureDict(signalData):
-    sampleRate = signalData["signalMeta"]["sampleRate"]
     timeSignals = signalData["timeSignals"]
     freqSignals = signalData["freqSignals"]
     featureDict = {
-        "mpu1AccMagDomFreq": freqSignals["mpu1AccMagDomFreq"],
-        "mpu1AccMagDomMag": freqSignals["mpu1AccMagDomMag"],
-        "mpu1AccAxisPowerEnergy1_A": (
-            freqSignals["mpu1AccAxisPowerEnergy1_A"]
-        ),
-        "mpu1AccAxisPowerEnergy2_A": (
-            freqSignals["mpu1AccAxisPowerEnergy2_A"]
-        ),
-        "mpu1AccAxisPowerEnergy3_A": (
-            freqSignals["mpu1AccAxisPowerEnergy3_A"]
-        ),
-        "mpu1GyrMagDomFreq": freqSignals["mpu1GyrMagDomFreq"],
-        "mpu1GyrMagDomMag": freqSignals["mpu1GyrMagDomMag"],
-        "mpu1GyrAxisPowerEnergy1_A": (
-            freqSignals["mpu1GyrAxisPowerEnergy1_A"]
-        ),
-        "mpu1GyrAxisPowerEnergy2_A": (
-            freqSignals["mpu1GyrAxisPowerEnergy2_A"]
-        ),
-        "mpu1GyrAxisPowerEnergy3_A": (
-            freqSignals["mpu1GyrAxisPowerEnergy3_A"]
-        ),
-        "mpu2AccMagDomFreq": freqSignals["mpu2AccMagDomFreq"],
-        "mpu2AccMagDomMag": freqSignals["mpu2AccMagDomMag"],
-        "mpu2AccAxisPowerEnergy1_A": (
-            freqSignals["mpu2AccAxisPowerEnergy1_A"]
-        ),
-        "mpu2AccAxisPowerEnergy2_A": (
-            freqSignals["mpu2AccAxisPowerEnergy2_A"]
-        ),
-        "mpu2AccAxisPowerEnergy3_A": (
-            freqSignals["mpu2AccAxisPowerEnergy3_A"]
-        ),
-        "mpu2GyrMagDomFreq": freqSignals["mpu2GyrMagDomFreq"],
-        "mpu2GyrMagDomMag": freqSignals["mpu2GyrMagDomMag"],
-        "mpu2GyrAxisPowerEnergy1_A": (
-            freqSignals["mpu2GyrAxisPowerEnergy1_A"]
-        ),
-        "mpu2GyrAxisPowerEnergy2_A": (
-            freqSignals["mpu2GyrAxisPowerEnergy2_A"]
-        ),
-        "mpu2GyrAxisPowerEnergy3_A": (
-            freqSignals["mpu2GyrAxisPowerEnergy3_A"]
-        ),
+        "mpu1AccMagMean": np.mean(timeSignals["mpu1AccMag"]),
+        "mpu1GyrMagMean": np.mean(timeSignals["mpu1GyrMag"]),
         "mpu1TempAvgMean": np.mean(timeSignals["mpu1TempAvg"]),
         "mpu1TempGradMean": np.mean(timeSignals["mpu1TempGrad"]),
-        "mpu2TempAvgMean": np.mean(timeSignals["mpu2TempAvg"]),
-        "mpu2TempGradMean": np.mean(timeSignals["mpu2TempGrad"]),
         "ds18b20OneAvgMean": np.mean(timeSignals["ds18b20OneAvg"]),
         "ds18b20OneGradMean": np.mean(timeSignals["ds18b20OneGrad"]),
+        "mpu1AccXFundamentalHz": (
+            freqSignals["mpu1AccXFundamentalHz"]
+        ),
+        "mpu1AccXFundamentalMag": (
+            freqSignals["mpu1AccXFundamentalMag"]
+        ),
+        "mpu1AccYFundamentalHz": (
+            freqSignals["mpu1AccYFundamentalHz"]
+        ),
+        "mpu1AccYFundamentalMag": (
+            freqSignals["mpu1AccYFundamentalMag"]
+        ),
+        "mpu1AccZFundamentalHz": (
+            freqSignals["mpu1AccZFundamentalHz"]
+        ),
+        "mpu1AccZFundamentalMag": (
+            freqSignals["mpu1AccZFundamentalMag"]
+        ),
+        "mpu2AccMagMean": np.mean(timeSignals["mpu2AccMag"]),
+        "mpu2GyrMagMean": np.mean(timeSignals["mpu2GyrMag"]),
+        "mpu2TempAvgMean": np.mean(timeSignals["mpu2TempAvg"]),
+        "mpu2TempGradMean": np.mean(timeSignals["mpu2TempGrad"]),
         "ds18b20TwoAvgMean": np.mean(timeSignals["ds18b20TwoAvg"]),
         "ds18b20TwoGradMean": np.mean(timeSignals["ds18b20TwoGrad"]),
+        "mpu2AccXFundamentalHz": (
+            freqSignals["mpu2AccXFundamentalHz"]
+        ),
+        "mpu2AccXFundamentalMag": (
+            freqSignals["mpu2AccXFundamentalMag"]
+        ),
+        "mpu2AccYFundamentalHz": (
+            freqSignals["mpu2AccYFundamentalHz"]
+        ),
+        "mpu2AccYFundamentalMag": (
+            freqSignals["mpu2AccYFundamentalMag"]
+        ),
+        "mpu2AccZFundamentalHz": (
+            freqSignals["mpu2AccZFundamentalHz"]
+        ),
+        "mpu2AccZFundamentalMag": (
+            freqSignals["mpu2AccZFundamentalMag"]
+        ),
     }
-    for signalPrefix in ["mpu1Acc", "mpu1Gyr", "mpu2Acc", "mpu2Gyr"]:
-        featureDict.update(
-            spectrumFeatureDict(
-                freqSignals["frequencyAxis"],
-                freqSignals[f"{signalPrefix}AxisPowerSpectrum"],
-                signalPrefix,
-                sampleRate,
-            )
-        )
     return featureDict
 
 
@@ -189,8 +141,8 @@ def featureVector(signalData, featureNames):
 
 
 # Builds valid start rows for repeated fixed-size training windows.
-def windowStartRows(rowCount, sampleRate, windowSeconds, stepSeconds):
-    windowSamples = int(sampleRate * windowSeconds)
+def windowStartRows(rowCount, sampleRate, bufferSeconds, stepSeconds):
+    windowSamples = int(sampleRate * bufferSeconds)
     stepSamples = int(sampleRate * stepSeconds)
     lastStartRow = rowCount - windowSamples
     startRows = []
@@ -204,23 +156,25 @@ def windowSignalData(
     dataFrame,
     sensorColumns,
     sampleRate,
-    windowSeconds,
+    bufferSeconds,
+    periodSeconds,
     startRow,
     tempWindowSeconds,
-    frequencyBands,
+    fftConfig,
 ):
     bufferData = buffer.buildBuf(
         dataFrame,
         sensorColumns,
         sampleRate,
-        windowSeconds,
+        bufferSeconds,
         startRow,
     )
     signalData = signals.buildSigs(
         bufferData,
         sampleRate,
+        periodSeconds,
         tempWindowSeconds,
-        frequencyBands,
+        fftConfig,
     )
     return signalData
 
@@ -231,10 +185,11 @@ def labelledFeatureRows(
     labelName,
     sensorColumns,
     sampleRate,
-    windowSeconds,
+    bufferSeconds,
+    periodSeconds,
     stepSeconds,
     tempWindowSeconds,
-    frequencyBands,
+    fftConfig,
     featureNames,
     failureIndexes,
 ):
@@ -242,7 +197,7 @@ def labelledFeatureRows(
     startRows = windowStartRows(
         dataFrame.shape[0],
         sampleRate,
-        windowSeconds,
+        bufferSeconds,
         stepSeconds,
     )
     featureRows = []
@@ -252,10 +207,11 @@ def labelledFeatureRows(
             dataFrame,
             sensorColumns,
             sampleRate,
-            windowSeconds,
+            bufferSeconds,
+            periodSeconds,
             startRow,
             tempWindowSeconds,
-            frequencyBands,
+            fftConfig,
         )
         featVec = featureVector(signalData, featureNames)
         featureRows.append(featVec)
@@ -276,10 +232,11 @@ def trainingSet(
     labelledCsvPaths,
     sensorColumns,
     sampleRate,
-    windowSeconds,
+    bufferSeconds,
+    periodSeconds,
     stepSeconds,
     tempWindowSeconds,
-    frequencyBands,
+    fftConfig,
     featureNames,
     failureIndexes,
 ):
@@ -293,10 +250,11 @@ def trainingSet(
                 labelName,
                 sensorColumns,
                 sampleRate,
-                windowSeconds,
+                bufferSeconds,
+                periodSeconds,
                 stepSeconds,
                 tempWindowSeconds,
-                frequencyBands,
+                fftConfig,
                 featureNames,
                 failureIndexes,
             )

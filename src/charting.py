@@ -2,16 +2,19 @@ import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-import numpy as np
 
 BG_COLOR = [0.08, 0.03, 0.03]
 TEXT_COLOR = [0.98, 0.95, 0.82]
 CLOSE_COLOR = [0.98, 0.98, 0.98]
 GRID_COLOR = [0.45, 0.40, 0.35]
-DB_FLOOR = 1e-12
-HARMONIC_COUNT = 8
-FUNDAMENTAL_WINDOW_DB = 20.0
-FFT_PLOT_MAX_HZ = 50.0
+ACC_COLOR = CLOSE_COLOR
+GYR_COLOR = "gold"
+MPU_TEMP_COLOR = "tomato"
+DS_TEMP_COLOR = "deepskyblue"
+FFT_COLOR = CLOSE_COLOR
+BPFO_COLOR = "tomato"
+BPFI_COLOR = "seagreen"
+AXIS_FFT_COLOR = CLOSE_COLOR
 
 
 # Applies the shared axis styling.
@@ -37,232 +40,233 @@ def _styleLeg(legend):
     frame.set_edgecolor(GRID_COLOR)
 
 
-# Converts one magnitude signal into dB.
-def magDb(signal):
-    magnitudeDb = 20.0 * np.log10(np.maximum(signal, DB_FLOOR))
-    return magnitudeDb
+# Builds the sample slice for the selected time plot window.
+def timeSlice(sampleRate, sampleSize, plotSeconds):
+    timePlotSampleCount = int(sampleRate * plotSeconds)
+    plotStop = min(timePlotSampleCount, sampleSize)
+    return slice(0, plotStop)
 
 
-# Converts one magnitude value into dB.
-def magValDb(magnitudeValue):
-    magnitudeValueDb = 20.0 * np.log10(max(magnitudeValue, DB_FLOOR))
-    return magnitudeValueDb
-
-
-# Converts one energy value into dB.
-def engDb(energyValue):
-    energyDb = 10.0 * np.log10(max(energyValue, DB_FLOOR))
-    return energyDb
-
-
-# Builds the plotted band labels from the configured frequency bands.
-def bandTicks(frequencyBands):
-    bandTickLabels = []
-    for _, bandLow, bandHigh in frequencyBands:
-        bandTickLabels.append(f"{bandLow}-{bandHigh}")
-    return bandTickLabels
-
-
-# Builds the fundamental index from one FFT magnitude spectrum.
-def fundIdx(spectrum):
-    spectrumDb = magDb(spectrum)
-    peakDb = np.max(spectrumDb[1:])
-    thresholdDb = peakDb - FUNDAMENTAL_WINDOW_DB
-    candidateIndexes = np.where(spectrumDb >= thresholdDb)[0]
-    fundamentalIndex = candidateIndexes[candidateIndexes > 0][0]
-    return fundamentalIndex
-
-
-# Builds one harmonic frequency and magnitude set from one spectrum.
-def harmSeries(frequencyAxis, spectrum, harmonicCount):
-    fundamentalIndex = fundIdx(spectrum)
-    fundamentalFrequency = frequencyAxis[fundamentalIndex]
-    harmonicFrequencies = []
-    harmonicMagnitudesDb = []
-    for harmonicNumber in range(1, harmonicCount + 1):
-        targetFrequency = fundamentalFrequency * harmonicNumber
-        if targetFrequency > frequencyAxis[-1]:
-            break
-        harmonicIndex = int(np.argmin(np.abs(frequencyAxis - targetFrequency)))
-        harmonicFrequencies.append(frequencyAxis[harmonicIndex])
-        harmonicMagnitudesDb.append(
-            magValDb(spectrum[harmonicIndex])
-        )
-    return np.array(harmonicFrequencies), np.array(harmonicMagnitudesDb)
-
-
-# Plots a list of available time-domain lines on one axis.
-def plotSigGrp(ax, timeSignals, signalGroup, title, ylabel):
-    for signalKey, color in signalGroup:
-        samplePlot = timeSignals["sample"][:100]
-        signalPlot = timeSignals[signalKey][:100]
-        ax.plot(
-            samplePlot,
-            signalPlot,
-            color=color,
-            linewidth=1.2,
-            label=signalKey,
-        )
+# Plots one time-domain signal on one axis.
+def plotSigAx(ax, sample, signal, color, title, ylabel):
+    ax.plot(
+        sample,
+        signal,
+        color=color,
+        linewidth=1.2,
+    )
     ax.set_title(title, color=TEXT_COLOR, pad=8)
     ax.set_xlabel("sample", color=TEXT_COLOR)
     ax.set_ylabel(ylabel, color=TEXT_COLOR)
-    legend = ax.legend(loc="best", frameon=True, fontsize=8)
-    _styleLeg(legend)
 
 
-# Plots one FFT harmonic series group on one axis.
-def plotFftGrp(ax, frequencyAxis, freqSignals, signalGroup, title):
-    harmonicSeries = []
-    for signalKey, color in signalGroup:
-        harmonicFrequencies, harmonicMagnitudesDb = harmSeries(
-            frequencyAxis,
-            freqSignals[signalKey],
-            HARMONIC_COUNT,
-        )
-        harmonicSeries.append(
-            (
-                signalKey,
-                color,
-                harmonicFrequencies,
-                harmonicMagnitudesDb,
-            )
-        )
-
-    minDb = min(np.min(series[3]) for series in harmonicSeries) - 6.0
-    maxDb = max(np.max(series[3]) for series in harmonicSeries) + 3.0
-    for signalKey, color, harmonicFrequencies, harmonicMagnitudesDb in (
-        harmonicSeries
-    ):
-        ax.vlines(
-            harmonicFrequencies,
-            minDb,
-            harmonicMagnitudesDb,
-            color=color,
-            alpha=0.35,
-            linewidth=1.0,
-        )
-        ax.plot(
-            harmonicFrequencies,
-            harmonicMagnitudesDb,
-            color=color,
-            linewidth=1.2,
-            marker="o",
-            label=signalKey,
-        )
-        ax.axvline(
-            harmonicFrequencies[0],
-            color=color,
-            linestyle="--",
-            linewidth=0.8,
-            alpha=0.6,
-        )
-    ax.set_title(title, color=TEXT_COLOR)
+# Plots one acceleration FFT with the bearing bands and fundamental.
+def plotAccFftAx(
+    ax,
+    frequencyAxis,
+    spectrum,
+    fundamentalHz,
+    fundamentalMag,
+    bpfoBand,
+    bpfiBand,
+    plotMaxHz,
+    sensorLabel,
+):
+    plotMask = frequencyAxis <= plotMaxHz
+    ax.plot(
+        frequencyAxis[plotMask],
+        spectrum[plotMask],
+        color=FFT_COLOR,
+        linewidth=1.0,
+    )
+    ax.axvspan(
+        bpfoBand[0],
+        bpfoBand[1],
+        color=BPFO_COLOR,
+        alpha=0.12,
+    )
+    ax.axvspan(
+        bpfiBand[0],
+        bpfiBand[1],
+        color=BPFI_COLOR,
+        alpha=0.10,
+    )
+    ax.scatter(
+        [fundamentalHz],
+        [fundamentalMag],
+        color=BPFO_COLOR,
+        s=28,
+        zorder=3,
+    )
+    ax.set_title(
+        f"{sensorLabel} acc fft ({fundamentalHz:.2f} hz)",
+        color=TEXT_COLOR,
+        pad=8,
+    )
     ax.set_xlabel("frequency hz", color=TEXT_COLOR)
-    ax.set_ylabel("magnitude db", color=TEXT_COLOR)
-    ax.set_xlim(0, min(FFT_PLOT_MAX_HZ, frequencyAxis[-1]))
-    ax.set_ylim(minDb, maxDb)
-    legend = ax.legend(loc="best", frameon=True, fontsize=8)
-    _styleLeg(legend)
+    ax.set_ylabel("magnitude", color=TEXT_COLOR)
+    ax.set_xlim(0.0, plotMaxHz)
 
 
-# Builds one grouped set of band energies for the available signals.
-def bandGrps(freqSignals, frequencyBands):
-    bandGroups = []
-    for signalPrefix, color in [
-        ("mpu1Acc", CLOSE_COLOR),
-        ("mpu2Acc", "deepskyblue"),
-        ("mpu1Gyr", "gold"),
-        ("mpu2Gyr", "tomato"),
-    ]:
-        bandValues = []
-        for bandName, _, _ in frequencyBands:
-            bandKey = f"{signalPrefix}AxisPower{bandName}"
-            bandValues.append(engDb(freqSignals[bandKey]))
-        bandGroups.append((signalPrefix, color, bandValues))
-    return bandGroups
+# Plots one two-bar bearing RMS summary.
+def plotBandRmsAx(ax, bpfoBandRms, bpfiBandRms, sensorLabel):
+    ax.bar(
+        ["BPFO RMS", "BPFI RMS"],
+        [bpfoBandRms, bpfiBandRms],
+        width=0.8,
+        color=[BPFO_COLOR, BPFI_COLOR],
+        alpha=0.85,
+    )
+    ax.set_title(
+        f"{sensorLabel} bearing band rms",
+        color=TEXT_COLOR,
+        pad=8,
+    )
+    ax.set_ylabel("rms magnitude", color=TEXT_COLOR)
 
 
-# Plots one grouped band-energy chart for the available signals.
-def plotBandGrps(ax, frequencyBands, bandGroups, title):
-    groupCount = len(bandGroups)
-    bandTickPositions = []
-    bandTickLabels = bandTicks(frequencyBands)
-    for bandIndex, (_, bandLow, bandHigh) in enumerate(frequencyBands):
-        bandWidth = bandHigh - bandLow
-        bandTickPositions.append(bandLow + (bandWidth / 2.0))
-        if groupCount == 0:
-            continue
-        groupedBarWidth = (bandWidth / groupCount) * 0.9
-        for groupIndex, (
-            signalName,
-            color,
-            bandValues,
-        ) in enumerate(bandGroups):
-            barLeft = bandLow + ((bandWidth / groupCount) * groupIndex)
-            ax.bar(
-                barLeft,
-                bandValues[bandIndex],
-                width=groupedBarWidth,
-                align="edge",
-                color=color,
-                label=signalName if bandIndex == 0 else None,
-            )
-    ax.set_title(title, color=TEXT_COLOR)
-    ax.set_xlabel("frequency hz", color=TEXT_COLOR)
-    ax.set_ylabel("energy db", color=TEXT_COLOR)
-    ax.set_xticks(bandTickPositions, bandTickLabels)
-    ax.set_xlim(frequencyBands[0][1], frequencyBands[-1][2])
-    if groupCount > 0:
-        legend = ax.legend(loc="best", frameon=True, fontsize=8)
-        _styleLeg(legend)
+# Plots one axis FFT spectrum with a marked fundamental.
+def plotAxisFftAx(
+    ax,
+    frequencyAxis,
+    spectrum,
+    fundamentalHz,
+    fundamentalMag,
+    plotMaxHz,
+    title,
+    showXLabel,
+    showYLabel,
+):
+    plotMask = frequencyAxis <= plotMaxHz
+    ax.plot(
+        frequencyAxis[plotMask],
+        spectrum[plotMask],
+        color=AXIS_FFT_COLOR,
+        linewidth=1.0,
+    )
+    ax.scatter(
+        [fundamentalHz],
+        [fundamentalMag],
+        color=BPFO_COLOR,
+        s=18,
+        zorder=3,
+    )
+    ax.set_title(title, color=TEXT_COLOR, pad=6, fontsize=9)
+    ax.set_xlim(0.0, plotMaxHz)
+    if showXLabel:
+        ax.set_xlabel("frequency hz", color=TEXT_COLOR)
+    else:
+        ax.set_xlabel("")
+    if showYLabel:
+        ax.set_ylabel("magnitude", color=TEXT_COLOR)
+    else:
+        ax.set_ylabel("")
 
 
-# Plots the current time-domain magnitude and temperature-average signals.
-def plotRaw(signalData, savePath):
+# Plots one sensor exploration figure for one MPU sensor block.
+def plotSensor(signalData, sensorNumber, savePath, plotSeconds):
+    sampleRate = signalData["signalMeta"]["sampleRate"]
+    plotMaxHz = signalData["signalMeta"]["fftConfig"]["plotMaxHz"]
+    rawSignals = signalData["rawSignals"]
     timeSignals = signalData["timeSignals"]
+    freqSignals = signalData["freqSignals"]
+    plotSlice = timeSlice(
+        sampleRate,
+        rawSignals["sample"].size,
+        plotSeconds,
+    )
 
-    fig = plt.figure(figsize=(12, 8))
+    sensorLabel = f"MPU6050 {sensorNumber}"
+    if sensorNumber == 1:
+        accMagKey = "mpu1AccMag"
+        gyrMagKey = "mpu1GyrMag"
+        mpuTempKey = "mpu1Temp"
+        dsTempKey = "ds18b20One"
+        accSpectrumKey = "mpu1AccSpectrum"
+        fundamentalHzKey = "mpu1AccFundamentalHz"
+        fundamentalMagKey = "mpu1AccFundamentalMag"
+        bpfoBandKey = "mpu1AccBpfoBand"
+        bpfiBandKey = "mpu1AccBpfiBand"
+        bpfoBandRmsKey = "mpu1AccBpfoBandRms"
+        bpfiBandRmsKey = "mpu1AccBpfiBandRms"
+    else:
+        accMagKey = "mpu2AccMag"
+        gyrMagKey = "mpu2GyrMag"
+        mpuTempKey = "mpu2Temp"
+        dsTempKey = "ds18b20Two"
+        accSpectrumKey = "mpu2AccSpectrum"
+        fundamentalHzKey = "mpu2AccFundamentalHz"
+        fundamentalMagKey = "mpu2AccFundamentalMag"
+        bpfoBandKey = "mpu2AccBpfoBand"
+        bpfiBandKey = "mpu2AccBpfiBand"
+        bpfoBandRmsKey = "mpu2AccBpfoBandRms"
+        bpfiBandRmsKey = "mpu2AccBpfiBandRms"
+
+    fig = plt.figure(figsize=(14, 8))
     fig.patch.set_facecolor(BG_COLOR)
-    grid = fig.add_gridspec(2, 2)
+    grid = fig.add_gridspec(2, 3)
     accAx = fig.add_subplot(grid[0, 0])
-    gyrAx = fig.add_subplot(grid[0, 1])
-    tempAx = fig.add_subplot(grid[1, :])
+    gyrAx = fig.add_subplot(grid[1, 0])
+    mpuTempAx = fig.add_subplot(grid[0, 1])
+    dsTempAx = fig.add_subplot(grid[1, 1])
+    fftAx = fig.add_subplot(grid[0, 2])
+    bandAx = fig.add_subplot(grid[1, 2])
 
     _styleAx(accAx)
     _styleAx(gyrAx)
-    _styleAx(tempAx)
+    _styleAx(mpuTempAx)
+    _styleAx(dsTempAx)
+    _styleAx(fftAx)
+    _styleAx(bandAx)
 
-    plotSigGrp(
+    plotSigAx(
         accAx,
-        timeSignals,
-        [
-            ("mpu1AccMag", CLOSE_COLOR),
-            ("mpu2AccMag", "deepskyblue"),
-        ],
-        "accel magnitude vs sample",
-        "accel mag",
+        rawSignals["sample"][plotSlice],
+        timeSignals[accMagKey][plotSlice],
+        ACC_COLOR,
+        f"{sensorLabel} accMag",
+        "magnitude",
     )
-    plotSigGrp(
+    plotSigAx(
         gyrAx,
-        timeSignals,
-        [
-            ("mpu1GyrMag", CLOSE_COLOR),
-            ("mpu2GyrMag", "deepskyblue"),
-        ],
-        "gyro magnitude vs sample",
-        "gyro mag",
+        rawSignals["sample"][plotSlice],
+        timeSignals[gyrMagKey][plotSlice],
+        GYR_COLOR,
+        f"{sensorLabel} gyroMag",
+        "magnitude",
     )
-    plotSigGrp(
-        tempAx,
-        timeSignals,
-        [
-            ("mpu1TempAvg", CLOSE_COLOR),
-            ("mpu2TempAvg", "deepskyblue"),
-            ("ds18b20OneAvg", "gold"),
-            ("ds18b20TwoAvg", "tomato"),
-        ],
-        "temperature average vs sample",
+    plotSigAx(
+        mpuTempAx,
+        rawSignals["sample"][plotSlice],
+        rawSignals[mpuTempKey][plotSlice],
+        MPU_TEMP_COLOR,
+        f"{sensorLabel} mpu temp",
         "temperature",
+    )
+    plotSigAx(
+        dsTempAx,
+        rawSignals["sample"][plotSlice],
+        rawSignals[dsTempKey][plotSlice],
+        DS_TEMP_COLOR,
+        f"{sensorLabel} ds18b20 temp",
+        "temperature",
+    )
+    plotAccFftAx(
+        fftAx,
+        freqSignals["frequencyAxis"],
+        freqSignals[accSpectrumKey],
+        freqSignals[fundamentalHzKey],
+        freqSignals[fundamentalMagKey],
+        freqSignals[bpfoBandKey],
+        freqSignals[bpfiBandKey],
+        plotMaxHz,
+        sensorLabel,
+    )
+    plotBandRmsAx(
+        bandAx,
+        freqSignals[bpfoBandRmsKey],
+        freqSignals[bpfiBandRmsKey],
+        sensorLabel,
     )
 
     fig.tight_layout(pad=0.8)
@@ -270,69 +274,46 @@ def plotRaw(signalData, savePath):
     plt.close(fig)
 
 
-# Plots FFT harmonics and grouped band-energy bars.
-def plotFrequency(signalData, savePath):
+# Plots one 12-panel FFT exploration figure for all accel and gyro axes.
+def plotAxisFftGrid(signalData, savePath):
+    plotMaxHz = signalData["signalMeta"]["fftConfig"]["plotMaxHz"]
     freqSignals = signalData["freqSignals"]
     frequencyAxis = freqSignals["frequencyAxis"]
-    frequencyBands = signalData["signalMeta"]["frequencyBands"]
-    bandGroups = bandGrps(freqSignals, frequencyBands)
+    signalGrid = [
+        ("mpu1AccX", "MPU1 Acc X FFT"),
+        ("mpu1AccY", "MPU1 Acc Y FFT"),
+        ("mpu1AccZ", "MPU1 Acc Z FFT"),
+        ("mpu1GyrX", "MPU1 Gyr X FFT"),
+        ("mpu1GyrY", "MPU1 Gyr Y FFT"),
+        ("mpu1GyrZ", "MPU1 Gyr Z FFT"),
+        ("mpu2AccX", "MPU2 Acc X FFT"),
+        ("mpu2AccY", "MPU2 Acc Y FFT"),
+        ("mpu2AccZ", "MPU2 Acc Z FFT"),
+        ("mpu2GyrX", "MPU2 Gyr X FFT"),
+        ("mpu2GyrY", "MPU2 Gyr Y FFT"),
+        ("mpu2GyrZ", "MPU2 Gyr Z FFT"),
+    ]
 
-    fig = plt.figure(figsize=(12, 8))
+    fig, axes = plt.subplots(4, 3, figsize=(14, 12))
     fig.patch.set_facecolor(BG_COLOR)
-    grid = fig.add_gridspec(2, 2)
-    accSpectrumAx = fig.add_subplot(grid[0, 0])
-    gyrSpectrumAx = fig.add_subplot(grid[0, 1])
-    accBandAx = fig.add_subplot(grid[1, 0])
-    gyrBandAx = fig.add_subplot(grid[1, 1])
 
-    _styleAx(accSpectrumAx)
-    _styleAx(gyrSpectrumAx)
-    _styleAx(accBandAx)
-    _styleAx(gyrBandAx)
+    for plotIndex, (signalPrefix, title) in enumerate(signalGrid):
+        rowIndex = plotIndex // 3
+        colIndex = plotIndex % 3
+        ax = axes[rowIndex, colIndex]
+        _styleAx(ax)
+        plotAxisFftAx(
+            ax,
+            frequencyAxis,
+            freqSignals[f"{signalPrefix}Spectrum"],
+            freqSignals[f"{signalPrefix}FundamentalHz"],
+            freqSignals[f"{signalPrefix}FundamentalMag"],
+            plotMaxHz,
+            title,
+            rowIndex == 3,
+            colIndex == 0,
+        )
 
-    plotFftGrp(
-        accSpectrumAx,
-        frequencyAxis,
-        freqSignals,
-        [
-            ("mpu1AccMagSpectrum", CLOSE_COLOR),
-            ("mpu2AccMagSpectrum", "deepskyblue"),
-        ],
-        "accel fft fundamentals and harmonics",
-    )
-
-    plotFftGrp(
-        gyrSpectrumAx,
-        frequencyAxis,
-        freqSignals,
-        [
-            ("mpu1GyrMagSpectrum", CLOSE_COLOR),
-            ("mpu2GyrMagSpectrum", "deepskyblue"),
-        ],
-        "gyro fft fundamentals and harmonics",
-    )
-
-    plotBandGrps(
-        accBandAx,
-        frequencyBands,
-        [
-            bandGroup
-            for bandGroup in bandGroups
-            if bandGroup[0] in ["mpu1Acc", "mpu2Acc"]
-        ],
-        "accel band energy",
-    )
-    plotBandGrps(
-        gyrBandAx,
-        frequencyBands,
-        [
-            bandGroup
-            for bandGroup in bandGroups
-            if bandGroup[0] in ["mpu1Gyr", "mpu2Gyr"]
-        ],
-        "gyro band energy",
-    )
-
-    fig.tight_layout(pad=0.8)
+    fig.tight_layout(pad=1.0)
     plt.savefig(savePath, facecolor=BG_COLOR)
     plt.close(fig)

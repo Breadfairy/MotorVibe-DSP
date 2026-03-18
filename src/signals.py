@@ -14,6 +14,20 @@ def rawSigs(bufferData):
     return rawSignals
 
 
+# Slices the latest analysis-period view from the current buffer data.
+def periodBuf(bufferData, sampleRate, periodSeconds):
+    periodSampleCount = int(sampleRate * periodSeconds)
+    periodFrame = bufferData["bufferFrame"].iloc[-periodSampleCount:]
+    periodFrame = periodFrame.reset_index(drop=True)
+    sensorColumns = list(bufferData["bufferArrays"].keys())
+    periodBufferData = {
+        "bufferFrame": periodFrame,
+        "bufferArrays": buffer.bufArrs(periodFrame, sensorColumns),
+        "bufferMeta": bufferData["bufferMeta"],
+    }
+    return periodBufferData
+
+
 # Calculates the magnitude of a 3-axis signal.
 def mag3(axisX, axisY, axisZ):
     magnitude = np.sqrt(axisX**2 + axisY**2 + axisZ**2)
@@ -39,64 +53,141 @@ def gradSig(signal, sampleRate):
     return gradient
 
 
-# Calculates the real FFT magnitude of a 1D array.
-def buildFft(signal):
+# Builds one DC-removed FFT magnitude spectrum.
+def buildSpectrum(signal, sampleRate):
+    sampleCount = signal.size
     centeredSignal = signal - np.mean(signal)
-    spectrum = np.abs(fft.rfft(centeredSignal))
-    return spectrum
-
-
-# Builds one summed axis-power spectrum from three raw axes.
-def axisPowFft(axisX, axisY, axisZ):
-    axisXSpectrum = buildFft(axisX)
-    axisYSpectrum = buildFft(axisY)
-    axisZSpectrum = buildFft(axisZ)
-    axisPowerSpectrum = (
-        axisXSpectrum**2
-        + axisYSpectrum**2
-        + axisZSpectrum**2
-    )
-    return axisPowerSpectrum
-
-
-# Builds the frequency axis for a real FFT.
-def freqAxis(sampleCount, sampleRate):
+    spectrum = fft.rfft(centeredSignal)
+    magnitude = (2.0 / sampleCount) * np.abs(spectrum)
     frequencyAxis = fft.rfftfreq(sampleCount, d=1.0 / sampleRate)
-    return frequencyAxis
+    return frequencyAxis, magnitude
 
 
-# Finds the dominant frequency in a magnitude spectrum.
-def domFreq(frequencyAxis, spectrum):
-    dominantIndex = np.argmax(spectrum[1:]) + 1
-    dominantFrequency = frequencyAxis[dominantIndex]
-    return dominantFrequency
+# Finds one dominant peak inside the selected frequency window.
+def fundamentalPeak(frequencyAxis, magnitude, minFundHz, maxFundHz):
+    fundMask = (
+        (frequencyAxis >= minFundHz)
+        & (frequencyAxis <= maxFundHz)
+    )
+    fundFrequencies = frequencyAxis[fundMask]
+    fundMagnitudes = magnitude[fundMask]
+    peakIndex = int(np.argmax(fundMagnitudes))
+    peakFrequency = float(fundFrequencies[peakIndex])
+    peakMagnitude = float(fundMagnitudes[peakIndex])
+    return peakFrequency, peakMagnitude
 
 
-# Finds the dominant magnitude in a magnitude spectrum.
-def domMag(spectrum):
-    dominantMagnitude = np.max(spectrum[1:])
-    return dominantMagnitude
+# Builds one RMS magnitude for one selected band.
+def bandRms(frequencyAxis, magnitude, bandLowHz, bandHighHz):
+    bandMask = (
+        (frequencyAxis >= bandLowHz)
+        & (frequencyAxis <= bandHighHz)
+    )
+    bandMagnitudes = magnitude[bandMask]
+    bandRmsValue = float(np.sqrt(np.mean(bandMagnitudes**2)))
+    return bandRmsValue
 
 
-# Calculates the energy inside one frequency band.
-def bandEng(frequencyAxis, spectrum, bandLow, bandHigh):
-    bandMask = (frequencyAxis >= bandLow) & (frequencyAxis <= bandHigh)
-    bandEnergy = np.sum(spectrum[bandMask] ** 2)
-    return bandEnergy
+# Builds one order band with a symmetric tolerance.
+def orderBand(fundamentalHz, lowOrder, highOrder, toleranceFraction):
+    bandLowHz = (fundamentalHz * lowOrder) * (
+        1.0 - toleranceFraction
+    )
+    bandHighHz = (fundamentalHz * highOrder) * (
+        1.0 + toleranceFraction
+    )
+    return bandLowHz, bandHighHz
 
 
-# Calculates named band energies for one spectrum.
-def bandEngs(frequencyAxis, spectrum, frequencyBands):
-    bandEnergies = {}
-    for bandName, bandLow, bandHigh in frequencyBands:
-        bandEnergy = bandEng(
-            frequencyAxis,
-            spectrum,
-            bandLow,
-            bandHigh,
+# Builds FFT spectra and peak metrics for the X, Y, and Z axes.
+def axisFftSigs(axisX, axisY, axisZ, sampleRate, fftConfig):
+    axisSignals = {}
+    for axisName, axisSignal in [
+        ("X", axisX),
+        ("Y", axisY),
+        ("Z", axisZ),
+    ]:
+        frequencyAxis, axisSpectrum = buildSpectrum(
+            axisSignal,
+            sampleRate,
         )
-        bandEnergies[bandName] = bandEnergy
-    return bandEnergies
+        fundamentalHz, fundamentalMag = fundamentalPeak(
+            frequencyAxis,
+            axisSpectrum,
+            fftConfig["minFundHz"],
+            fftConfig["maxFundHz"],
+        )
+        axisSignals[axisName] = {
+            "frequencyAxis": frequencyAxis,
+            "spectrum": axisSpectrum,
+            "fundamentalHz": fundamentalHz,
+            "fundamentalMag": fundamentalMag,
+        }
+    return axisSignals
+
+
+# Combines the three axis spectra into one plot-level spectrum summary.
+def combAxisFftSigs(axisSignals, fftConfig):
+    frequencyAxis = axisSignals["X"]["frequencyAxis"]
+    combinedSpectrum = np.sqrt(
+        axisSignals["X"]["spectrum"]**2
+        + axisSignals["Y"]["spectrum"]**2
+        + axisSignals["Z"]["spectrum"]**2
+    )
+    fundamentalHz, fundamentalMag = fundamentalPeak(
+        frequencyAxis,
+        combinedSpectrum,
+        fftConfig["minFundHz"],
+        fftConfig["maxFundHz"],
+    )
+    bpfoBand = orderBand(
+        fundamentalHz,
+        fftConfig["bpfoLowOrder"],
+        fftConfig["bpfoHighOrder"],
+        fftConfig["orderToleranceFraction"],
+    )
+    bpfiBand = orderBand(
+        fundamentalHz,
+        fftConfig["bpfiLowOrder"],
+        fftConfig["bpfiHighOrder"],
+        fftConfig["orderToleranceFraction"],
+    )
+    combinedSignals = {
+        "frequencyAxis": frequencyAxis,
+        "spectrum": combinedSpectrum,
+        "fundamentalHz": fundamentalHz,
+        "fundamentalMag": fundamentalMag,
+        "bpfoBand": bpfoBand,
+        "bpfiBand": bpfiBand,
+        "bpfoBandRms": bandRms(
+            frequencyAxis,
+            combinedSpectrum,
+            bpfoBand[0],
+            bpfoBand[1],
+        ),
+        "bpfiBandRms": bandRms(
+            frequencyAxis,
+            combinedSpectrum,
+            bpfiBand[0],
+            bpfiBand[1],
+        ),
+    }
+    return combinedSignals
+
+
+# Stores one set of X, Y, and Z FFT summaries in the frequency dict.
+def storeAxisFftSigs(freqSignals, signalPrefix, axisSignals):
+    for axisName, axisSignalData in axisSignals.items():
+        freqSignals[f"{signalPrefix}{axisName}Spectrum"] = (
+            axisSignalData["spectrum"]
+        )
+        freqSignals[f"{signalPrefix}{axisName}FundamentalHz"] = (
+            axisSignalData["fundamentalHz"]
+        )
+        freqSignals[f"{signalPrefix}{axisName}FundamentalMag"] = (
+            axisSignalData["fundamentalMag"]
+        )
+    return freqSignals
 
 
 # Builds temperature average and gradient signals.
@@ -149,70 +240,101 @@ def magSigs(rawSignals):
     return timeSignals
 
 
-# Builds frequency-domain signals from magnitude and raw axis signals.
-def freqSigs(rawSignals, timeSignals, sampleRate, frequencyBands):
-    sampleCount = timeSignals["sample"].size
-    frequencyAxis = freqAxis(sampleCount, sampleRate)
+# Builds acceleration FFT summaries for both MPUs.
+def freqSigs(rawSignals, sampleRate, fftConfig):
     freqSignals = {
-        "frequencyAxis": frequencyAxis,
+        "frequencyAxis": None,
     }
-    signalGroups = [
-        ("mpu1Acc", "mpu1AccMag", "mpu1AccX", "mpu1AccY", "mpu1AccZ"),
-        ("mpu1Gyr", "mpu1GyrMag", "mpu1GyrX", "mpu1GyrY", "mpu1GyrZ"),
-        ("mpu2Acc", "mpu2AccMag", "mpu2AccX", "mpu2AccY", "mpu2AccZ"),
-        ("mpu2Gyr", "mpu2GyrMag", "mpu2GyrX", "mpu2GyrY", "mpu2GyrZ"),
+    sensorAxes = [
+        ("mpu1Acc", "mpu1AccX", "mpu1AccY", "mpu1AccZ"),
+        ("mpu2Acc", "mpu2AccX", "mpu2AccY", "mpu2AccZ"),
+        ("mpu1Gyr", "mpu1GyrX", "mpu1GyrY", "mpu1GyrZ"),
+        ("mpu2Gyr", "mpu2GyrX", "mpu2GyrY", "mpu2GyrZ"),
     ]
-    for signalPrefix, magnitudeKey, axisXKey, axisYKey, axisZKey in (
-        signalGroups
-    ):
-        magnitudeSpectrum = buildFft(timeSignals[magnitudeKey])
-        dominantFrequency = domFreq(
-            frequencyAxis,
-            magnitudeSpectrum,
-        )
-        dominantMagnitude = domMag(magnitudeSpectrum)
-        axisPowerSpectrum = axisPowFft(
+    for signalPrefix, axisXKey, axisYKey, axisZKey in sensorAxes:
+        axisSignals = axisFftSigs(
             rawSignals[axisXKey],
             rawSignals[axisYKey],
             rawSignals[axisZKey],
+            sampleRate,
+            fftConfig,
         )
-        bandEnergies = bandEngs(
-            frequencyAxis,
-            axisPowerSpectrum,
-            frequencyBands,
+        if freqSignals["frequencyAxis"] is None:
+            freqSignals["frequencyAxis"] = axisSignals["X"]["frequencyAxis"]
+        freqSignals = storeAxisFftSigs(
+            freqSignals,
+            signalPrefix,
+            axisSignals,
         )
-        freqSignals[f"{magnitudeKey}Spectrum"] = magnitudeSpectrum
-        freqSignals[f"{magnitudeKey}DomFreq"] = dominantFrequency
-        freqSignals[f"{magnitudeKey}DomMag"] = dominantMagnitude
-        freqSignals[f"{signalPrefix}AxisPowerSpectrum"] = axisPowerSpectrum
-        for bandName, bandEnergy in bandEnergies.items():
-            freqSignals[f"{signalPrefix}AxisPower{bandName}"] = bandEnergy
+        if "Acc" in signalPrefix:
+            combinedSignals = combAxisFftSigs(axisSignals, fftConfig)
+            freqSignals[f"{signalPrefix}Spectrum"] = (
+                combinedSignals["spectrum"]
+            )
+            freqSignals[f"{signalPrefix}FundamentalHz"] = (
+                combinedSignals["fundamentalHz"]
+            )
+            freqSignals[f"{signalPrefix}FundamentalMag"] = (
+                combinedSignals["fundamentalMag"]
+            )
+            freqSignals[f"{signalPrefix}BpfoBand"] = (
+                combinedSignals["bpfoBand"]
+            )
+            freqSignals[f"{signalPrefix}BpfiBand"] = (
+                combinedSignals["bpfiBand"]
+            )
+            freqSignals[f"{signalPrefix}BpfoBandRms"] = (
+                combinedSignals["bpfoBandRms"]
+            )
+            freqSignals[f"{signalPrefix}BpfiBandRms"] = (
+                combinedSignals["bpfiBandRms"]
+            )
     return freqSignals
 
 
 # Builds metadata for the current signal pass.
-def sigMeta(bufferData, sampleRate, tempWindowSeconds, frequencyBands):
+def sigMeta(
+    bufferData,
+    sampleRate,
+    periodSeconds,
+    tempWindowSeconds,
+    fftConfig,
+):
     tempWindowSamples = int(sampleRate * tempWindowSeconds)
     signalMeta = {
         "sampleRate": sampleRate,
         "bufferSeconds": bufferData["bufferMeta"]["bufferSeconds"],
         "sampleCount": bufferData["bufferMeta"]["sampleCount"],
+        "periodSeconds": periodSeconds,
+        "periodSampleCount": int(sampleRate * periodSeconds),
         "tempWindowSeconds": tempWindowSeconds,
         "tempWindowSamples": tempWindowSamples,
-        "frequencyBands": frequencyBands,
+        "fftConfig": fftConfig,
     }
     return signalMeta
 
 
 # Builds named raw, time, and frequency signals from the current buffer.
-def buildSigs(bufferData, sampleRate, tempWindowSeconds, frequencyBands):
+def buildSigs(
+    bufferData,
+    sampleRate,
+    periodSeconds,
+    tempWindowSeconds,
+    fftConfig,
+):
     signalMeta = sigMeta(
         bufferData,
         sampleRate,
+        periodSeconds,
         tempWindowSeconds,
-        frequencyBands,
+        fftConfig,
     )
-    rawSignals = rawSigs(bufferData)
+    periodBufferData = periodBuf(
+        bufferData,
+        sampleRate,
+        periodSeconds,
+    )
+    rawSignals = rawSigs(periodBufferData)
     magnitudeSignals = magSigs(rawSignals)
     temperatureSignals = tempSigs(
         rawSignals,
@@ -224,9 +346,8 @@ def buildSigs(bufferData, sampleRate, tempWindowSeconds, frequencyBands):
     timeSignals.update(temperatureSignals)
     freqSignals = freqSigs(
         rawSignals,
-        magnitudeSignals,
         sampleRate,
-        frequencyBands,
+        fftConfig,
     )
     signalData = {
         "bufferFrame": bufferData["bufferFrame"],
@@ -246,8 +367,9 @@ def readCSV(
     sampleRate,
     bufferSeconds,
     startRow,
+    periodSeconds,
     tempWindowSeconds,
-    frequencyBands,
+    fftConfig,
 ):
     dataFrame = pd.read_csv(csvPath)
     bufferData = buffer.buildBuf(
@@ -260,8 +382,9 @@ def readCSV(
     return buildSigs(
         bufferData,
         sampleRate,
+        periodSeconds,
         tempWindowSeconds,
-        frequencyBands,
+        fftConfig,
     )
 
 
@@ -275,8 +398,9 @@ def liveSense(
     delimiter,
     timeout,
     encoding,
+    periodSeconds,
     tempWindowSeconds,
-    frequencyBands,
+    fftConfig,
 ):
     sampleCount = int(sampleRate * bufferSeconds)
     rows = []
@@ -295,6 +419,7 @@ def liveSense(
     return buildSigs(
         bufferData,
         sampleRate,
+        periodSeconds,
         tempWindowSeconds,
-        frequencyBands,
+        fftConfig,
     )
