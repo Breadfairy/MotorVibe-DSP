@@ -1,0 +1,30 @@
+/Users/broderickmadden-scott/programming/Py/DSP-Motor/quickCapture/build/core/esp32-hal-periman.c.o: \
+ /Users/broderickmadden-scott/Library/Arduino15/packages/esp32/hardware/esp32/3.3.7/cores/esp32/esp32-hal-periman.c \
+ /Users/broderickmadden-scott/Library/Arduino15/packages/esp32/hardware/esp32/3.3.7/cores/esp32/esp32-hal-log.h \
+ /Users/broderickmadden-scott/Library/Arduino15/packages/esp32/tools/esp32h2-libs/3.3.7/qio_qspi/include/sdkconfig.h \
+ /Users/broderickmadden-scott/Library/Arduino15/packages/esp32/tools/esp32h2-libs/3.3.7/include/esp_timer/include/esp_timer.h \
+ /Users/broderickmadden-scott/Library/Arduino15/packages/esp32/tools/esp32h2-libs/3.3.7/include/newlib/platform_include/stdio.h \
+ /Users/broderickmadden-scott/Library/Arduino15/packages/esp32/tools/esp32h2-libs/3.3.7/include/esp_common/include/esp_err.h \
+ /Users/broderickmadden-scott/Library/Arduino15/packages/esp32/tools/esp32h2-libs/3.3.7/include/esp_common/include/esp_compiler.h \
+ /Users/broderickmadden-scott/Library/Arduino15/packages/esp32/tools/esp32h2-libs/3.3.7/include/esp_hw_support/include/esp_etm.h \
+ /Users/broderickmadden-scott/Library/Arduino15/packages/esp32/tools/esp32h2-libs/3.3.7/include/esp_rom/esp32h2/include/esp32h2/rom/ets_sys.h \
+ /Users/broderickmadden-scott/Library/Arduino15/packages/esp32/tools/esp32h2-libs/3.3.7/include/log/include/esp_log.h \
+ /Users/broderickmadden-scott/Library/Arduino15/packages/esp32/tools/esp32h2-libs/3.3.7/include/esp_rom/include/esp_rom_sys.h \
+ /Users/broderickmadden-scott/Library/Arduino15/packages/esp32/tools/esp32h2-libs/3.3.7/include/soc/esp32h2/include/soc/reset_reasons.h \
+ /Users/broderickmadden-scott/Library/Arduino15/packages/esp32/tools/esp32h2-libs/3.3.7/include/soc/esp32h2/include/soc/soc_caps.h \
+ /Users/broderickmadden-scott/Library/Arduino15/packages/esp32/tools/esp32h2-libs/3.3.7/include/log/include/esp_log_config.h \
+ /Users/broderickmadden-scott/Library/Arduino15/packages/esp32/tools/esp32h2-libs/3.3.7/include/log/include/esp_log_level.h \
+ /Users/broderickmadden-scott/Library/Arduino15/packages/esp32/tools/esp32h2-libs/3.3.7/include/esp_common/include/esp_assert.h \
+ /Users/broderickmadden-scott/Library/Arduino15/packages/esp32/tools/esp32h2-libs/3.3.7/include/log/include/esp_log_color.h \
+ /Users/broderickmadden-scott/Library/Arduino15/packages/esp32/tools/esp32h2-libs/3.3.7/include/log/include/esp_log_buffer.h \
+ /Users/broderickmadden-scott/Library/Arduino15/packages/esp32/tools/esp32h2-libs/3.3.7/include/log/include/esp_log_timestamp.h \
+ /Users/broderickmadden-scott/Library/Arduino15/packages/esp32/tools/esp32h2-libs/3.3.7/include/log/include/esp_log_write.h \
+ /Users/broderickmadden-scott/Library/Arduino15/packages/esp32/tools/esp32h2-libs/3.3.7/include/log/include/esp_log_format.h \
+ /Users/broderickmadden-scott/Library/Arduino15/packages/esp32/tools/esp32h2-libs/3.3.7/include/log/include/esp_log_args.h \
+ /Users/broderickmadden-scott/Library/Arduino15/packages/esp32/tools/esp32h2-libs/3.3.7/include/esp_common/include/esp_macros.h \
+ /Users/broderickmadden-scott/Library/Arduino15/packages/esp32/tools/esp32h2-libs/3.3.7/include/esp_common/include/esp_assert.h \
+ /Users/broderickmadden-scott/Library/Arduino15/packages/esp32/tools/esp32h2-libs/3.3.7/include/log/include/esp_log_attr.h \
+ /Users/broderickmadden-scott/Library/Arduino15/packages/esp32/tools/esp32h2-libs/3.3.7/include/esp_common/include/esp_attr.h \
+ /Users/broderickmadden-scott/Library/Arduino15/packages/esp32/tools/esp32h2-libs/3.3.7/include/log/include/esp_private/log_attr.h \
+ /Users/broderickmadden-scott/Library/Arduino15/packages/esp32/hardware/esp32/3.3.7/cores/esp32/esp32-hal-periman.h \
+ /Users/broderickmadden-scott/Library/Arduino15/packages/esp32/tools/esp32h2-libs/3.3.7/include/esp_common/include/esp_bit_defs.h
