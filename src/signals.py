@@ -1,6 +1,5 @@
 import numpy as np
 import pandas as pd
-import serial
 from scipy import fft
 
 import buffer
@@ -190,25 +189,18 @@ def storeAxisFftSigs(freqSignals, signalPrefix, axisSignals):
     return freqSignals
 
 
-# Builds temperature average and gradient signals.
+# Builds the single DS18B20 average and gradient signals.
 def tempSigs(rawSignals, sampleRate, tempWindowSamples):
     sample = rawSignals["sample"]
-    timeSignals = {}
-    for tempKey in [
-        "mpu1Temp",
-        "mpu2Temp",
-        "ds18b20One",
-        "ds18b20Two",
-    ]:
-        averageKey = f"{tempKey}Avg"
-        gradientKey = f"{tempKey}Grad"
-        averageSignal = movAvg(rawSignals[tempKey], tempWindowSamples)
-        averageSample = trimSamp(sample, averageSignal.size)
-        gradient = gradSig(averageSignal, sampleRate)
-        timeSignals[averageKey] = averageSignal
-        timeSignals[f"{averageKey}Sample"] = averageSample
-        timeSignals[gradientKey] = gradient
-        timeSignals[f"{gradientKey}Sample"] = averageSample
+    averageSignal = movAvg(rawSignals["ds18b20"], tempWindowSamples)
+    averageSample = trimSamp(sample, averageSignal.size)
+    gradient = gradSig(averageSignal, sampleRate)
+    timeSignals = {
+        "ds18b20Avg": averageSignal,
+        "ds18b20AvgSample": averageSample,
+        "ds18b20Grad": gradient,
+        "ds18b20GradSample": averageSample,
+    }
     return timeSignals
 
 
@@ -356,6 +348,7 @@ def buildSigs(
         "freqSignals": freqSignals,
         "signalMeta": signalMeta,
         "bufferMeta": bufferData["bufferMeta"],
+        "streamDiagnostics": bufferData.get("streamDiagnostics"),
     }
     return signalData
 
@@ -395,26 +388,32 @@ def liveSense(
     sampleRate,
     bufferSeconds,
     baudrate,
-    delimiter,
     timeout,
-    encoding,
+    batchSeconds,
+    batchHeader,
+    packetFormat,
+    packetSize,
+    maxIdleSeconds,
+    initialHeaderIdleSeconds,
+    maxConsecutiveBadBatches,
     periodSeconds,
     tempWindowSeconds,
     fftConfig,
 ):
-    sampleCount = int(sampleRate * bufferSeconds)
-    rows = []
-    with serial.Serial(port=port, baudrate=baudrate, timeout=timeout) as link:
-        for _ in range(sampleCount):
-            line = link.readline().decode(encoding).strip()
-            rows.append(line.split(delimiter))
-    dataFrame = pd.DataFrame(rows, columns=sensorColumns)
-    bufferData = buffer.buildBuf(
-        dataFrame,
+    bufferData = buffer.liveBuf(
+        port,
         sensorColumns,
         sampleRate,
         bufferSeconds,
-        0,
+        baudrate,
+        timeout,
+        batchSeconds,
+        batchHeader,
+        packetFormat,
+        packetSize,
+        maxIdleSeconds,
+        initialHeaderIdleSeconds,
+        maxConsecutiveBadBatches,
     )
     return buildSigs(
         bufferData,

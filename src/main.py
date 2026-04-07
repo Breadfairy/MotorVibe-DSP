@@ -1,7 +1,10 @@
 from pathlib import Path
+import struct
+import time
 
 import numpy as np
 import pandas as pd
+from serial.tools import list_ports
 import sys
 
 import buffer
@@ -10,13 +13,13 @@ import ml
 import signals
 
 #paths
-csvPath = "data/testData/test.csv"
+csvPath = "data/testdata/reduced_sample.csv"
 trainingDataDirPath = "data/train"
 outputDirPath = "outputs/csvCharts"
 modelPath = "outputs/models/motorClassifier.pth"
 
 #buffering variables
-sampleRate = 1000
+sampleRate = 800
 bufferSeconds = 2
 periodSeconds = 1
 csvPlotPeriodCount = 3
@@ -38,11 +41,16 @@ fftConfig = {
 
 
 #serialCom variables
-serialPort = "COM3"
-baudRate = 115200
-serialDelimiter = ","
-serialTimeout = 1.0
-serialEncoding = "utf-8"
+serialPort = None
+baudRate = 2000000
+serialTimeout = 0.2
+batchSeconds = 1
+initialHeaderIdleSeconds = 8.0
+batchHeader = b"\xAA\xBB\xCC\xDD"
+packetFormat = "<I13h"
+packetSize = struct.calcsize(packetFormat)
+maxIdleSeconds = 3.0
+maxConsecutiveBadBatches = 3
 
 # ML variables
 trainingWindowSeconds = 1
@@ -66,6 +74,47 @@ def clfModel():
         modelSizes["outputSize"],
     )
     return model
+
+
+# Picks one serial port for the flashed MCU on the current machine.
+def livePort(selectedPort):
+    if selectedPort is not None:
+        return selectedPort
+    preferredNames = [
+        "usbmodem",
+        "ttyACM",
+        "ttyUSB",
+        "COM",
+    ]
+    portInfos = list(list_ports.comports())
+    for preferredName in preferredNames:
+        for portInfo in portInfos:
+            if preferredName in portInfo.device:
+                return portInfo.device
+    return portInfos[0].device
+
+
+# Builds the rolling live sample-rate state.
+def liveRateState():
+    rateState = {
+        "lastTime": None,
+        "lastSample": None,
+        "measuredSampleRate": None,
+    }
+    return rateState
+
+
+# Updates the rolling live sample-rate from the latest signal block.
+def updateLiveRate(rateState, signalData):
+    currentTime = time.perf_counter()
+    currentSample = int(signalData["rawSignals"]["sample"][-1])
+    if rateState["lastTime"] is not None:
+        timeDelta = currentTime - rateState["lastTime"]
+        sampleDelta = currentSample - rateState["lastSample"]
+        rateState["measuredSampleRate"] = sampleDelta / timeDelta
+    rateState["lastTime"] = currentTime
+    rateState["lastSample"] = currentSample
+    return rateState
 
 
 # Builds the label-to-CSV training map from the training directory layout.
@@ -264,15 +313,21 @@ def runCSV(csvPath, modelPath):
     return signalDataList
 
 
-# Orchestrates live input through buffer, signals, and ML.
+# Orchestrates live input through buffer, signals, and live monitoring.
 def runLive(
     port,
     baudrate,
-    delimiter,
     timeout,
-    encoding,
-    modelPath,
+    batchSeconds,
+    batchHeader,
+    packetFormat,
+    packetSize,
+    maxIdleSeconds,
+    initialHeaderIdleSeconds,
+    maxConsecutiveBadBatches,
 ):
+    livePlot = gui.liveAccMagFig(bufferSeconds)
+    rateState = liveRateState()
     for bufferData in buffer.liveRoll(
         port,
         sensorColumns,
@@ -280,9 +335,14 @@ def runLive(
         bufferSeconds,
         liveStepSeconds,
         baudrate,
-        delimiter,
         timeout,
-        encoding,
+        batchSeconds,
+        batchHeader,
+        packetFormat,
+        packetSize,
+        maxIdleSeconds,
+        initialHeaderIdleSeconds,
+        maxConsecutiveBadBatches,
     ):
         signalData = signals.buildSigs(
             bufferData,
@@ -291,8 +351,90 @@ def runLive(
             tempWindowSeconds,
             fftConfig,
         )
-        signalData["mlData"] = mlData(signalData, modelPath)
-        gui.printLiveSum(sensorColumns, signalData)
+        rateState = updateLiveRate(rateState, signalData)
+        gui.printLiveSum(sensorColumns, signalData, rateState)
+        gui.updateLiveAccMag(livePlot, signalData)
+
+
+# Captures live serial rows to CSV while running the live monitor.
+def runCapture(
+    csvPath,
+    captureSeconds,
+    port,
+    baudrate,
+    timeout,
+    batchSeconds,
+    batchHeader,
+    packetFormat,
+    packetSize,
+    maxIdleSeconds,
+    initialHeaderIdleSeconds,
+    maxConsecutiveBadBatches,
+):
+    livePlot = gui.liveAccMagFig(bufferSeconds)
+    rateState = liveRateState()
+    captureBatchCount = int(captureSeconds / batchSeconds)
+    capturedRows = []
+    bufferData = None
+    liveBatchSource = buffer.liveBatchRows(
+        port,
+        sampleRate,
+        baudrate,
+        timeout,
+        batchSeconds,
+        batchHeader,
+        packetFormat,
+        packetSize,
+        maxIdleSeconds,
+        initialHeaderIdleSeconds,
+        maxConsecutiveBadBatches,
+    )
+    try:
+        for batchIndex, batchData in enumerate(liveBatchSource, start=1):
+            newRows, streamDiagnostics = batchData
+            capturedRows.extend(newRows)
+            newRowsFrame = buffer.rowsDf(newRows, sensorColumns)
+            if bufferData is None:
+                bufferData = buffer.buildBuf(
+                    newRowsFrame,
+                    sensorColumns,
+                    sampleRate,
+                    bufferSeconds,
+                    0,
+                )
+            else:
+                bufferData = buffer.rollBuf(
+                    bufferData,
+                    newRowsFrame,
+                    sensorColumns,
+                    sampleRate,
+                    bufferSeconds,
+                )
+            bufferData = buffer.withLiveDiagnostics(
+                bufferData,
+                streamDiagnostics,
+            )
+            signalData = signals.buildSigs(
+                bufferData,
+                sampleRate,
+                periodSeconds,
+                tempWindowSeconds,
+                fftConfig,
+            )
+            rateState = updateLiveRate(rateState, signalData)
+            gui.printLiveSum(sensorColumns, signalData, rateState)
+            gui.updateLiveAccMag(livePlot, signalData)
+            if batchIndex >= captureBatchCount:
+                break
+    finally:
+        liveBatchSource.close()
+
+    capturedFrame = buffer.rowsDf(capturedRows, sensorColumns)
+    Path(csvPath).parent.mkdir(parents=True, exist_ok=True)
+    capturedFrame.to_csv(csvPath, index=False)
+    print("captureCsvPath:", csvPath)
+    print("captureRowCount:", capturedFrame.shape[0])
+    return capturedFrame
 
 
 # Orchestrates labelled CSV training, model fitting, and weight saving.
@@ -345,6 +487,23 @@ def main():
         if len(sys.argv) > 2:
             selectedCsvPath = sys.argv[2]
         pipelineOutput = runCSV(selectedCsvPath, modelPath)
+    elif source == "capture":
+        selectedCapturePath = sys.argv[2]
+        selectedCaptureSeconds = int(sys.argv[3])
+        pipelineOutput = runCapture(
+            csvPath=selectedCapturePath,
+            captureSeconds=selectedCaptureSeconds,
+            port=livePort(serialPort),
+            baudrate=baudRate,
+            timeout=serialTimeout,
+            batchSeconds=batchSeconds,
+            batchHeader=batchHeader,
+            packetFormat=packetFormat,
+            packetSize=packetSize,
+            maxIdleSeconds=maxIdleSeconds,
+            initialHeaderIdleSeconds=initialHeaderIdleSeconds,
+            maxConsecutiveBadBatches=maxConsecutiveBadBatches,
+        )
     elif source == "train":
         selectedTrainingDataDirPath = trainingDataDirPath
         selectedModelPath = modelPath
@@ -357,13 +516,20 @@ def main():
             selectedModelPath,
         )
     else:
+        selectedPort = serialPort
+        if len(sys.argv) > 2:
+            selectedPort = sys.argv[2]
         pipelineOutput = runLive(
-            port=serialPort,
+            port=livePort(selectedPort),
             baudrate=baudRate,
-            delimiter=serialDelimiter,
             timeout=serialTimeout,
-            encoding=serialEncoding,
-            modelPath=modelPath,
+            batchSeconds=batchSeconds,
+            batchHeader=batchHeader,
+            packetFormat=packetFormat,
+            packetSize=packetSize,
+            maxIdleSeconds=maxIdleSeconds,
+            initialHeaderIdleSeconds=initialHeaderIdleSeconds,
+            maxConsecutiveBadBatches=maxConsecutiveBadBatches,
         )
 
     print("pipelineOutputReady")

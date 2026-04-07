@@ -1,6 +1,3 @@
-import matplotlib
-
-matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 BG_COLOR = [0.08, 0.03, 0.03]
@@ -180,8 +177,7 @@ def plotSensor(signalData, sensorNumber, savePath, plotSeconds):
     if sensorNumber == 1:
         accMagKey = "mpu1AccMag"
         gyrMagKey = "mpu1GyrMag"
-        mpuTempKey = "mpu1Temp"
-        dsTempKey = "ds18b20One"
+        dsTempKey = "ds18b20"
         accSpectrumKey = "mpu1AccSpectrum"
         fundamentalHzKey = "mpu1AccFundamentalHz"
         fundamentalMagKey = "mpu1AccFundamentalMag"
@@ -192,8 +188,7 @@ def plotSensor(signalData, sensorNumber, savePath, plotSeconds):
     else:
         accMagKey = "mpu2AccMag"
         gyrMagKey = "mpu2GyrMag"
-        mpuTempKey = "mpu2Temp"
-        dsTempKey = "ds18b20Two"
+        dsTempKey = "ds18b20"
         accSpectrumKey = "mpu2AccSpectrum"
         fundamentalHzKey = "mpu2AccFundamentalHz"
         fundamentalMagKey = "mpu2AccFundamentalMag"
@@ -207,17 +202,17 @@ def plotSensor(signalData, sensorNumber, savePath, plotSeconds):
     grid = fig.add_gridspec(2, 3)
     accAx = fig.add_subplot(grid[0, 0])
     gyrAx = fig.add_subplot(grid[1, 0])
-    mpuTempAx = fig.add_subplot(grid[0, 1])
-    dsTempAx = fig.add_subplot(grid[1, 1])
+    dsTempAx = fig.add_subplot(grid[0, 1])
     fftAx = fig.add_subplot(grid[0, 2])
-    bandAx = fig.add_subplot(grid[1, 2])
+    bandAx = fig.add_subplot(grid[1, 1])
+    emptyAx = fig.add_subplot(grid[1, 2])
 
     _styleAx(accAx)
     _styleAx(gyrAx)
-    _styleAx(mpuTempAx)
     _styleAx(dsTempAx)
     _styleAx(fftAx)
     _styleAx(bandAx)
+    fig.delaxes(emptyAx)
 
     plotSigAx(
         accAx,
@@ -236,19 +231,11 @@ def plotSensor(signalData, sensorNumber, savePath, plotSeconds):
         "magnitude",
     )
     plotSigAx(
-        mpuTempAx,
-        rawSignals["sample"][plotSlice],
-        rawSignals[mpuTempKey][plotSlice],
-        MPU_TEMP_COLOR,
-        f"{sensorLabel} mpu temp",
-        "temperature",
-    )
-    plotSigAx(
         dsTempAx,
         rawSignals["sample"][plotSlice],
         rawSignals[dsTempKey][plotSlice],
         DS_TEMP_COLOR,
-        f"{sensorLabel} ds18b20 temp",
+        "DS18B20 temp",
         "temperature",
     )
     plotAccFftAx(

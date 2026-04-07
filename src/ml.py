@@ -13,10 +13,8 @@ def featureNames(sampleRate):
     featureNames = [
         "mpu1AccMagMean",
         "mpu1GyrMagMean",
-        "mpu1TempAvgMean",
-        "mpu1TempGradMean",
-        "ds18b20OneAvgMean",
-        "ds18b20OneGradMean",
+        "ds18b20AvgMean",
+        "ds18b20GradMean",
         "mpu1AccXFundamentalHz",
         "mpu1AccXFundamentalMag",
         "mpu1AccYFundamentalHz",
@@ -25,10 +23,6 @@ def featureNames(sampleRate):
         "mpu1AccZFundamentalMag",
         "mpu2AccMagMean",
         "mpu2GyrMagMean",
-        "mpu2TempAvgMean",
-        "mpu2TempGradMean",
-        "ds18b20TwoAvgMean",
-        "ds18b20TwoGradMean",
         "mpu2AccXFundamentalHz",
         "mpu2AccXFundamentalMag",
         "mpu2AccYFundamentalHz",
@@ -80,10 +74,8 @@ def featureDict(signalData):
     featureDict = {
         "mpu1AccMagMean": np.mean(timeSignals["mpu1AccMag"]),
         "mpu1GyrMagMean": np.mean(timeSignals["mpu1GyrMag"]),
-        "mpu1TempAvgMean": np.mean(timeSignals["mpu1TempAvg"]),
-        "mpu1TempGradMean": np.mean(timeSignals["mpu1TempGrad"]),
-        "ds18b20OneAvgMean": np.mean(timeSignals["ds18b20OneAvg"]),
-        "ds18b20OneGradMean": np.mean(timeSignals["ds18b20OneGrad"]),
+        "ds18b20AvgMean": np.mean(timeSignals["ds18b20Avg"]),
+        "ds18b20GradMean": np.mean(timeSignals["ds18b20Grad"]),
         "mpu1AccXFundamentalHz": (
             freqSignals["mpu1AccXFundamentalHz"]
         ),
@@ -104,10 +96,6 @@ def featureDict(signalData):
         ),
         "mpu2AccMagMean": np.mean(timeSignals["mpu2AccMag"]),
         "mpu2GyrMagMean": np.mean(timeSignals["mpu2GyrMag"]),
-        "mpu2TempAvgMean": np.mean(timeSignals["mpu2TempAvg"]),
-        "mpu2TempGradMean": np.mean(timeSignals["mpu2TempGrad"]),
-        "ds18b20TwoAvgMean": np.mean(timeSignals["ds18b20TwoAvg"]),
-        "ds18b20TwoGradMean": np.mean(timeSignals["ds18b20TwoGrad"]),
         "mpu2AccXFundamentalHz": (
             freqSignals["mpu2AccXFundamentalHz"]
         ),
