@@ -9,3 +9,6 @@ serial_harness/esp32_dummy_serial/build/
 serial_harness/stm32_blackpill/build/
 data/testdata/raw
 AI.docx
+
+# large captured datasets
+*.csv
