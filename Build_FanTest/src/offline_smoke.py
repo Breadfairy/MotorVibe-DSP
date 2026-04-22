@@ -6,117 +6,52 @@ import struct
 
 import pandas as pd
 
-import ml_core
-import signals_core
-
-################################################################################
-# variables/constants                                                          #
-################################################################################
-packetCount = 1000
-sampleRate = 1000.0
-bufferSampleCount = 32
-recordFormat = "<I6h"
-accelScale = 16384.0
-gyroScale = 131.0
-recordSize = struct.calcsize(recordFormat)
-bufferSize = recordSize * bufferSampleCount
-csvColumns = [
-    "t_us",
-    "t_s",
-    "ax",
-    "ay",
-    "az",
-    "gx",
-    "gy",
-    "gz",
-]
-
-################################################################################
-# helpers                                                                      #
-################################################################################
-
-
-# Converts one unpacked serial packet into the shared CSV row format.
-def packetRow(packetValues):
-    rowValue = [
-        packetValues[0],
-        packetValues[0] / 1e6,
-        packetValues[1] / accelScale,
-        packetValues[2] / accelScale,
-        packetValues[3] / accelScale,
-        packetValues[4] / gyroScale,
-        packetValues[5] / gyroScale,
-        packetValues[6] / gyroScale,
-    ]
-    return rowValue
-
+import buffer
+import ml
+import signals
 
 ################################################################################
 # main functions                                                               #
 ################################################################################
 
-print("recordFormat:", recordFormat)
-print("recordSize:", recordSize)
-print("bufferSize:", bufferSize)
 
-assert recordSize == 16
-assert bufferSize == 512
-
-payload = bytearray()
-for packetIndex in range(packetCount):
-    tUs = packetIndex * 1000
-    ax = int(1000 * math.sin(packetIndex * 0.02))
-    ay = int(900 * math.sin(packetIndex * 0.03))
-    az = int(1200 * math.sin(packetIndex * 0.04))
-    gx = int(500 * math.sin(packetIndex * 0.01))
-    gy = int(450 * math.sin(packetIndex * 0.05))
-    gz = int(350 * math.sin(packetIndex * 0.06))
-    payload.extend(
-        struct.pack(
-            recordFormat,
-            tUs,
-            ax,
-            ay,
-            az,
-            gx,
-            gy,
-            gz,
-        )
-    )
-
-chunkSizes = [7, 13, 64, 101, 257, 509]
-leftOver = b""
-rows = []
-byteIndex = 0
-chunkIndex = 0
-while byteIndex < len(payload):
-    chunkSize = chunkSizes[chunkIndex % len(chunkSizes)]
-    chunkIndex += 1
-    nextByteIndex = min(byteIndex + chunkSize, len(payload))
-    leftOver += payload[byteIndex:nextByteIndex]
-    byteIndex = nextByteIndex
-    while len(leftOver) >= recordSize:
-        packetBytes = leftOver[:recordSize]
-        leftOver = leftOver[recordSize:]
-        packetValues = struct.unpack(recordFormat, packetBytes)
-        rows.append(packetRow(packetValues))
-
-assert len(rows) == packetCount
-assert len(leftOver) == 0
-
-dataFrame = pd.DataFrame(rows, columns=csvColumns)
-rawSignals = signals_core.rawArrays(dataFrame)
-timeSignals = signals_core.timeData(rawSignals, sampleRate)
-freqSignals = signals_core.freqData(
-    rawSignals,
-    sampleRate,
-    signals_core.fftConfig,
-)
-featureVector = ml_core.featureVector(timeSignals, freqSignals)
-
-assert featureVector.shape == (12,)
-
-print("packetRows:", len(rows))
-print("featureShape:", featureVector.shape)
-print("featureHead:", featureVector[:6])
-print("offlineSmoke: PASS")
+for mode in ["sixaxis_1k", "gyro_8k"]:
+    fmt = buffer.config(mode)["sampleFmt"]
+    rows = []
+    n = int(buffer.sampleRate(mode))
+    for i in range(n):
+        t = i / buffer.sampleRate(mode)
+        if mode == "sixaxis_1k":
+            vals = [
+                int(600 * math.sin(t * 20.0)),
+                int(500 * math.sin(t * 23.0)),
+                int(400 * math.sin(t * 17.0)),
+                int(300 * math.sin(t * 60.0)),
+                int(260 * math.sin(t * 63.0)),
+                int(220 * math.sin(t * 57.0)),
+            ]
+            payload = struct.pack(fmt, *vals)
+        if mode == "gyro_8k":
+            vals = [
+                int(320 * math.sin(t * 300.0)),
+                int(280 * math.sin(t * 340.0)),
+                int(240 * math.sin(t * 380.0)),
+            ]
+            payload = struct.pack(fmt, *vals)
+        head = {
+            "mode": mode,
+            "startSample": i,
+            "sampleRateHz": int(buffer.sampleRate(mode)),
+        }
+        rows += buffer.decodeRows(head, payload)
+    dataFrame = pd.DataFrame(rows, columns=buffer.csvCols(mode))
+    sig = signals.buildSignals(dataFrame, mode)
+    vec = ml.modelVector(sig)
+    net = ml.model(mode)
+    prob = ml.runModel(net, ml.featureTensor(vec[None, :]))
+    print("mode:", mode)
+    print("rows:", len(rows))
+    print("vectorShape:", vec.shape)
+    print("fundHz:", sig["fundHz"])
+    print("topLabel:", ml.topLabel(prob))
+    print("offlineSmoke: PASS")

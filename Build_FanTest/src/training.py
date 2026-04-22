@@ -2,21 +2,19 @@
 # Imports                                                                      #
 ################################################################################
 from pathlib import Path
+import sys
 
 import numpy as np
-import pandas as pd
 
-import ml_core
-import signals_core
+import buffer
+import ml
+import signals
 
 ################################################################################
 # variables/constants                                                          #
 ################################################################################
-trainDir = "data/train"
-modelPath = "outputs/models/simpleMotorClassifier.pth"
-sampleRate = 1000.0
-winSecs = 1.0
-stepSecs = 1.0
+rootDir = Path(__file__).resolve().parents[1]
+mode = "sixaxis_1k"
 epochs = 200
 learnRate = 0.001
 
@@ -25,99 +23,76 @@ learnRate = 0.001
 ################################################################################
 
 
-# Collects labelled CSV paths from the training directory layout.
+# Collects labelled CSV paths from the current mode training directory.
 def labelCsvs(trainDir):
-    csvData = {}
-    for labelName in ml_core.labelNames:
-        labelDir = Path(trainDir) / labelName
-        csvPaths = [str(csvPath) for csvPath in sorted(labelDir.glob("*.csv"))]
-        if len(csvPaths) > 0:
-            csvData[labelName] = csvPaths
-    return csvData
+    rows = {}
+    for i in ml.labelNames:
+        path = trainDir / i
+        files = [j for j in sorted(path.glob("*.csv"))]
+        if len(files) > 0:
+            rows[i] = files
+    return rows
 
 
-# Builds the valid window start rows for one dataframe.
-def startRows(rowCount, sampleRate, winSecs, stepSecs):
-    winRows = int(sampleRate * winSecs)
-    stepSize = int(sampleRate * stepSecs)
-    lastRow = rowCount - winRows
-    rowStarts = []
-    for startRow in range(0, lastRow + 1, stepSize):
-        rowStarts.append(startRow)
-    return rowStarts
-
+# Builds the current window start rows for one dataframe.
+def startRows(rowCount, winRows, stepRows):
+    out = []
+    last = rowCount - winRows
+    for i in range(0, last + 1, stepRows):
+        out.append(i)
+    return out
 
 ################################################################################
 # main functions                                                               #
 ################################################################################
 
 
-# Runs the shared one-second feature extraction and model training flow.
-def main():
-    labelledCsvs = labelCsvs(trainDir)
-    featureRows = []
-    labelRows = []
-    datasetMeta = []
-    winRows = int(sampleRate * winSecs)
+if len(sys.argv) > 1:
+    mode = sys.argv[1]
 
-    for labelName, csvPaths in labelledCsvs.items():
-        for csvPath in csvPaths:
-            dataFrame = pd.read_csv(csvPath)
-            csvStarts = startRows(
-                dataFrame.shape[0],
-                sampleRate,
-                winSecs,
-                stepSecs,
-            )
-            for startRow in csvStarts:
-                windowFrame = dataFrame.iloc[
-                    startRow : startRow + winRows
-                ].reset_index(drop=True)
-                rawSignals = signals_core.rawArrays(windowFrame)
-                timeSignals = signals_core.timeData(rawSignals, sampleRate)
-                freqSignals = signals_core.freqData(
-                    rawSignals,
-                    sampleRate,
-                    signals_core.fftConfig,
-                )
-                featureRows.append(
-                    ml_core.featureVector(timeSignals, freqSignals)
-                )
-                labelRows.append(labelName)
-            datasetMeta.append(
-                {
-                    "labelName": labelName,
-                    "csvPath": csvPath,
-                    "windowCount": len(csvStarts),
-                }
-            )
+trainDir = rootDir / "data" / "train" / mode
+modelPath = rootDir / "outputs" / "models" / f"{mode}.pth"
+winRows = ml.windowRows(mode)
+stepRows = ml.stepRows(mode)
+fileRows = labelCsvs(trainDir)
+xRows = []
+yRows = []
+metaRows = []
 
-    featureMatrix = np.vstack(featureRows)
-    labelVector = ml_core.encodeLabels(labelRows)
-    featureData = ml_core.featureTensor(featureMatrix)
-    labelData = ml_core.labelTensor(labelVector)
-    modelValue = ml_core.model(ml_core.hiddenSize)
-    lossHistory = ml_core.trainModel(
-        modelValue,
-        featureData,
-        labelData,
-        epochs,
-        learnRate,
-    )
+for i in fileRows:
+    for j in fileRows[i]:
+        dataFrame = signals.readCSV(j)
+        starts = startRows(dataFrame.shape[0], winRows, stepRows)
+        for k in starts:
+            winFrame = dataFrame.iloc[k : k + winRows].reset_index(drop=True)
+            sig = signals.buildSignals(winFrame, mode)
+            xRows.append(ml.modelVector(sig))
+            yRows.append(i)
+        metaRows.append(
+            {
+                "label": i,
+                "csv": str(j),
+                "windows": len(starts),
+            }
+        )
 
-    Path(modelPath).parent.mkdir(parents=True, exist_ok=True)
-    ml_core.saveModel(modelValue, modelPath)
+x = np.vstack(xRows)
+y = ml.encodeLabels(yRows)
+xData = ml.featureTensor(x)
+yData = ml.labelTensor(y)
+net = ml.model(mode)
+lossRows = ml.trainModel(net, xData, yData, epochs, learnRate)
+Path(modelPath).parent.mkdir(parents=True, exist_ok=True)
+ml.saveModel(net, mode, modelPath)
+prob = ml.runModel(net, xData[:1])
 
-    probTensor = ml_core.runModel(modelValue, featureData[:1])
-    print("featureShape:", featureMatrix.shape)
-    print("labelShape:", labelVector.shape)
-    print("datasetMeta:", datasetMeta)
-    print("modelPath:", modelPath)
-    print("lossStart:", lossHistory[0])
-    print("lossEnd:", lossHistory[-1])
-    print("topLabel:", ml_core.topLabel(probTensor))
-    print("probDict:", ml_core.probDict(probTensor))
-
-
-if __name__ == "__main__":
-    main()
+print("mode:", mode)
+print("trainDir:", trainDir)
+print("featureShape:", x.shape)
+print("labelShape:", y.shape)
+print("metaRows:", metaRows)
+print("modelPath:", modelPath)
+print("lossStart:", lossRows[0])
+print("lossEnd:", lossRows[-1])
+print("topLabel:", ml.topLabel(prob))
+print("probDict:", ml.probDict(prob))

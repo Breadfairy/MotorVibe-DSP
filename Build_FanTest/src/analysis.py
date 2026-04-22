@@ -4,66 +4,39 @@
 from pathlib import Path
 import sys
 
-import pandas as pd
-
-import charting_core
-import signals_core
+import buffer
+import charting
+import signals
 
 ################################################################################
 # variables/constants                                                          #
 ################################################################################
-csvPath = "ML_data/test1.csv"
-outDir = "outputs/simpleCharts"
-sampleRate = 1000.0
-
-################################################################################
-# helpers                                                                      #
-################################################################################
-
-
-# Creates the chart output directories used by analysis.
-def chartDirs(outDir):
-    outputDirs = [
-        Path(outDir),
-        Path(outDir) / "sensor",
-        Path(outDir) / "allFFT",
-    ]
-    for outputDir in outputDirs:
-        outputDir.mkdir(parents=True, exist_ok=True)
-
+rootDir = Path(__file__).resolve().parents[1]
+csvPath = rootDir / "data" / "capture" / "test1.csv"
+outDir = rootDir / "outputs" / "charts"
 
 ################################################################################
 # main functions                                                               #
 ################################################################################
 
 
-# Runs pure CSV signal analysis and saves the chart outputs.
-def main():
-    csvFile = csvPath
-    if len(sys.argv) > 1:
-        csvFile = sys.argv[1]
+if len(sys.argv) > 1:
+    csvPath = Path(sys.argv[1])
 
-    dataFrame = pd.read_csv(csvFile)
-    rawSignals = signals_core.rawArrays(dataFrame)
-    timeSignals = signals_core.timeData(rawSignals, sampleRate)
-    freqSignals = signals_core.freqData(
-        rawSignals,
-        sampleRate,
-        signals_core.fftConfig,
-    )
+dataFrame = signals.readCSV(csvPath)
+mode = buffer.modeFromCols(dataFrame.columns)
+sig = signals.buildSignals(dataFrame, mode)
+saveDir = outDir / csvPath.stem
+saveDir.mkdir(parents=True, exist_ok=True)
+timePath = saveDir / "timeGrid.png"
+fftPath = saveDir / "fftGrid.png"
+summaryPath = saveDir / "summary.png"
+charting.plotTimeGrid(sig, timePath)
+charting.plotFftGrid(sig, fftPath)
+charting.plotSummary(sig, summaryPath)
 
-    chartDirs(outDir)
-    sensorPath = str(Path(outDir) / "sensor" / "sensor.png")
-    fftGridPath = str(Path(outDir) / "allFFT" / "fftGrid.png")
-
-    charting_core.plotSensor(rawSignals, timeSignals, freqSignals, sensorPath)
-    charting_core.plotAxisGrid(freqSignals, fftGridPath)
-
-    print("csvPath:", csvFile)
-    print("sampleRate:", sampleRate)
-    print("sensorPath:", sensorPath)
-    print("fftGridPath:", fftGridPath)
-
-
-if __name__ == "__main__":
-    main()
+print("csvPath:", csvPath)
+print("mode:", mode)
+print("timePath:", timePath)
+print("fftPath:", fftPath)
+print("summaryPath:", summaryPath)
