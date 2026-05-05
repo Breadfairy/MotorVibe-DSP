@@ -15,13 +15,13 @@ import signals
 ################################################################################
 
 
-for mode in ["sixaxis_1k", "gyro_8k"]:
+for mode in ["all_1k", "gyro_8k"]:
     fmt = buffer.config(mode)["sampleFmt"]
     rows = []
     n = int(buffer.sampleRate(mode))
     for i in range(n):
         t = i / buffer.sampleRate(mode)
-        if mode == "sixaxis_1k":
+        if mode == "all_1k":
             vals = [
                 int(600 * math.sin(t * 20.0)),
                 int(500 * math.sin(t * 23.0)),

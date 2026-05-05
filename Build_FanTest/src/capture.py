@@ -14,7 +14,7 @@ import buffer
 rootDir = Path(__file__).resolve().parents[1]
 captureSecs = 10
 fileName = "test1.csv"
-mode = "sixaxis_1k"
+mode = "all_1k"
 port = None
 outDir = rootDir / "data" / "capture"
 

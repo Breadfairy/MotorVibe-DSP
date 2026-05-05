@@ -14,7 +14,7 @@ import signals
 # variables/constants                                                          #
 ################################################################################
 rootDir = Path(__file__).resolve().parents[1]
-mode = "sixaxis_1k"
+mode = "all_1k"
 epochs = 200
 learnRate = 0.001
 

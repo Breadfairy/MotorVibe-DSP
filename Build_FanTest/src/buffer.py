@@ -22,20 +22,21 @@ serialTimeout = 0.2
 readyText = "Ready. Waiting for MODE and START..."
 startCommand = b"START\n"
 stopCommand = b"STOP\n"
+readyWaitSeconds = 2.0
 modeCommand = {
-    "sixaxis_1k": b"MODE SIXAXIS_1K\n",
+    "all_1k": b"MODE ALL_1K\n",
     "gyro_8k": b"MODE GYRO_8K\n",
 }
 modeId = {
-    "sixaxis_1k": 1,
+    "all_1k": 1,
     "gyro_8k": 2,
 }
 modeName = {
-    1: "sixaxis_1k",
+    1: "all_1k",
     2: "gyro_8k",
 }
 modeData = {
-    "sixaxis_1k": {
+    "all_1k": {
         "sampleRate": 1000.0,
         "sampleRateHz": 1000,
         "frameSamples": 128,
@@ -136,7 +137,7 @@ def packetSize(mode):
 # Returns the mode name from the current CSV columns.
 def modeFromCols(cols):
     if "ax" in cols:
-        return "sixaxis_1k"
+        return "all_1k"
     return "gyro_8k"
 
 
@@ -161,18 +162,21 @@ def openLink(port):
         baudrate=streamBaud,
         timeout=serialTimeout,
     )
-    link.dtr = False
     time.sleep(0.2)
     link.reset_input_buffer()
-    link.dtr = True
-    time.sleep(0.2)
     return link
 
 
 # Waits for the firmware ready line before sending mode commands.
 def waitForReady(link):
+    t0 = time.perf_counter()
     while True:
-        line = link.readline().decode("ascii", errors="ignore").strip()
+        if time.perf_counter() - t0 >= readyWaitSeconds:
+            return
+        try:
+            line = link.readline().decode("ascii", errors="ignore").strip()
+        except serial.SerialException:
+            return
         if len(line) == 0:
             continue
         print("device:", line)
@@ -281,7 +285,7 @@ def decodeRows(head, payload):
     for i, vals in enumerate(struct.iter_unpack(fmt, payload)):
         sample = head["startSample"] + i
         row = [sample, sample / rate]
-        if mode == "sixaxis_1k":
+        if mode == "all_1k":
             row += [
                 vals[0] / accelScale,
                 vals[1] / accelScale,

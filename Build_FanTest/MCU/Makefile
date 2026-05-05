@@ -1,35 +1,40 @@
-SKETCH := dataStreamBinary
+SKETCH := firmware_0.1
+SKETCH_SRC := $(SKETCH).ino
 BUILD_DIR := build
+STAGE_DIR := $(BUILD_DIR)/$(SKETCH)
+STAGE_SKETCH := $(STAGE_DIR)/$(SKETCH).ino
 ARDUINO_CLI := /opt/homebrew/bin/arduino-cli
-BOARD_FQBN := esp32:esp32:esp32h2
-FLASH_PORT := /dev/cu.usbmodem1401
-MONITOR_PORT := /dev/cu.usbmodem5A360305921
+BOARD_FQBN := esp32:esp32:esp32h2:CDCOnBoot=cdc
+FLASH_PORT := $(shell $(ARDUINO_CLI) board list | awk '/ESP32 Family Device/ {print $$1; exit}')
+MONITOR_PORT := $(FLASH_PORT)
 XDG_CACHE_HOME := /tmp
 
 .PHONY: all compile flash monitor clean doctor
 
 all: compile
 
-compile:
-	mkdir -p $(BUILD_DIR)
+stage:
+	mkdir -p $(STAGE_DIR)
+	cp $(SKETCH_SRC) $(STAGE_SKETCH)
+
+compile: stage
 	XDG_CACHE_HOME=$(XDG_CACHE_HOME) $(ARDUINO_CLI) compile \
 		--fqbn $(BOARD_FQBN) \
 		--build-path $(abspath $(BUILD_DIR)) \
-		$(SKETCH)
+		$(abspath $(STAGE_DIR))
 
-flash:
-	mkdir -p $(BUILD_DIR)
+flash: stage
 	XDG_CACHE_HOME=$(XDG_CACHE_HOME) $(ARDUINO_CLI) compile \
 		--fqbn $(BOARD_FQBN) \
 		--build-path $(abspath $(BUILD_DIR)) \
 		-u \
 		-p $(FLASH_PORT) \
-		$(SKETCH)
+		$(abspath $(STAGE_DIR))
 
 monitor:
 	$(ARDUINO_CLI) monitor \
 		-p $(MONITOR_PORT) \
-		-c baudrate=2000000
+		-c baudrate=1000000
 
 doctor:
 	$(ARDUINO_CLI) version

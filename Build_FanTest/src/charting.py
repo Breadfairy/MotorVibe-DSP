@@ -28,11 +28,11 @@ sumColor = "deepskyblue"
 bpfoColor = "tomato"
 bpfiColor = "seagreen"
 plotMaxHz = {
-    "sixaxis_1k": 500.0,
+    "all_1k": 500.0,
     "gyro_8k": 4000.0,
 }
 liveTimeYMax = {
-    "sixaxis_1k": 500.0,
+    "all_1k": 500.0,
     "gyro_8k": 500.0,
 }
 liveMaxPoints = 1200
@@ -63,7 +63,7 @@ def flatAxes(axes):
 
 # Returns the current subplot shape for one mode.
 def gridShape(mode):
-    if mode == "sixaxis_1k":
+    if mode == "all_1k":
         return 2, 3
     return 1, 3
 

@@ -23,11 +23,11 @@ labelNames = [
     "rubbingContact",
 ]
 winSecs = {
-    "sixaxis_1k": 1.0,
+    "all_1k": 1.0,
     "gyro_8k": 1.0,
 }
 stepSecs = {
-    "sixaxis_1k": 0.25,
+    "all_1k": 0.25,
     "gyro_8k": 0.25,
 }
 hiddenSize = 64

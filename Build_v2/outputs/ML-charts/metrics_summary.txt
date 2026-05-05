@@ -1,0 +1,15 @@
+Per-class window accuracy
+good: 84.34% (910/1079)
+leak: 100.00% (180/180)
+inflow: 99.44% (179/180)
+outflow: 97.22% (175/180)
+temp: 100.00% (180/180)
+tilt: 94.41% (169/179)
+
+Per-class file accuracy after averaging 1-second windows
+good: 100.00% (6/6)
+leak: 100.00% (1/1)
+inflow: 100.00% (1/1)
+outflow: 100.00% (1/1)
+temp: 100.00% (1/1)
+tilt: 100.00% (1/1)

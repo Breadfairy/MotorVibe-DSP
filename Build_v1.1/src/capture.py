@@ -16,7 +16,7 @@ import serial
 captureSec = 10
 fileName = "test1.csv"
 outDir = "ML_data"
-port = "COM5"
+port = "/dev/cu.usbserial-0001"
 baudRate = 1000000
 timeout = 1.0
 sampleRate = 1000.0
