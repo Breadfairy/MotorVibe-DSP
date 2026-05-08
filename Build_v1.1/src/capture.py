@@ -13,7 +13,7 @@ import serial
 ################################################################################
 # variables/constants                                                          #
 ################################################################################
-captureSec = 10
+captureSec = 30
 fileName = "test1.csv"
 outDir = "ML_data"
 port = "/dev/cu.usbserial-0001"

@@ -12,6 +12,8 @@ import signals
 ################################################################################
 # variables/constants                                                          #
 ################################################################################
+# visualise.py is an offline checking tool.
+# It saves time-domain and FFT charts for one CSV recording.
 buildDir = Path(__file__).resolve().parents[1]
 trainDir = buildDir / "data" / "training" / "main"
 outDir = buildDir / "outputs" / "charts"
@@ -30,6 +32,7 @@ plotMaxHz = 500.0
 ################################################################################
 
 
+# Applies the same dark chart style used by the live plot.
 def styleAx(ax):
     ax.set_facecolor(bgColor)
     ax.tick_params(colors=textColor, labelsize=8)
@@ -48,11 +51,15 @@ def styleAx(ax):
 
 
 def main():
+    # Use a command line CSV if given.
+    # Otherwise fall back to a default training file for quick testing.
     if len(sys.argv) > 1:
         csvPath = Path(sys.argv[1])
     else:
         csvPath = trainDir / "good1.csv"
 
+    # Load and clean the recording, then calculate the same time and FFT signals
+    # used by the training code.
     df = data.readCsv(csvPath)
     df = data.cleanFrame(df)
     timeData = signals.timeSignals(df, sampleRate)
@@ -62,12 +69,15 @@ def main():
         signals.fftConfig,
     )
 
+    # Save charts in a folder named after the CSV file.
     saveDir = outDir / csvPath.stem
     saveDir.mkdir(parents=True, exist_ok=True)
 
+    # First chart: raw time-domain signal for all 12 sensor axes.
     fig, axes = plt.subplots(4, 3, figsize=(14, 12))
     fig.patch.set_facecolor(bgColor)
     for index, axisLabel in enumerate(signals.axisLabels):
+        # Place each axis into a 4 x 3 grid.
         row = index // 3
         col = index % 3
         ax = axes[row, col]
@@ -86,9 +96,12 @@ def main():
     plt.savefig(timePath, facecolor=bgColor)
     plt.close(fig)
 
+    # Second chart: FFT spectrum for all 12 sensor axes.
+    # Each subplot also marks the detected fundamental and BPFO/BPFI bands.
     fig, axes = plt.subplots(4, 3, figsize=(14, 12))
     fig.patch.set_facecolor(bgColor)
     for index, axisLabel in enumerate(signals.axisLabels):
+        # Pull the pre-calculated spectrum and band values from freqData.
         row = index // 3
         col = index % 3
         ax = axes[row, col]

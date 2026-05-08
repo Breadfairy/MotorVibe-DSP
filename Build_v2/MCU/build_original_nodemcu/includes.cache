@@ -1,0 +1,382 @@
+[
+  {
+    "added_include_path": "/Users/broderickmadden-scott/Library/Arduino15/packages/esp32/hardware/esp32/3.3.7/cores/esp32"
+  },
+  {
+    "added_include_path": "/Users/broderickmadden-scott/Library/Arduino15/packages/esp32/hardware/esp32/3.3.7/variants/nodemcu-32s"
+  },
+  {
+    "compile": {
+      "source_path": "/Users/broderickmadden-scott/programming/Py/DSP-Motor/Build_v2/MCU/build_original_nodemcu/sketch/original_firmware.ino.cpp",
+      "object_path": "/Users/broderickmadden-scott/programming/Py/DSP-Motor/Build_v2/MCU/build_original_nodemcu/sketch/original_firmware.ino.cpp.o",
+      "depfile_path": "/Users/broderickmadden-scott/programming/Py/DSP-Motor/Build_v2/MCU/build_original_nodemcu/sketch/original_firmware.ino.cpp.d"
+    },
+    "compile_task": {
+      "args": [
+        "/Users/broderickmadden-scott/Library/Arduino15/packages/esp32/tools/esp-x32/2511/bin/xtensa-esp32-elf-g++",
+        "-c",
+        "@/Users/broderickmadden-scott/Library/Arduino15/packages/esp32/tools/esp32-libs/3.3.7/flags/cpp_flags",
+        "-w",
+        "-Os",
+        "-Werror=return-type",
+        "-w",
+        "-x",
+        "c++",
+        "-E",
+        "-CC",
+        "-DF_CPU=240000000L",
+        "-DARDUINO=10607",
+        "-DARDUINO_NODEMCU_32S",
+        "-DARDUINO_ARCH_ESP32",
+        "-DARDUINO_BOARD=\"NODEMCU_32S\"",
+        "-DARDUINO_VARIANT=\"nodemcu-32s\"",
+        "-DARDUINO_PARTITION_default",
+        "-DARDUINO_HOST_OS=\"macosx\"",
+        "-DARDUINO_FQBN=\"esp32:esp32:nodemcu-32s\"",
+        "-DESP32=ESP32",
+        "-DCORE_DEBUG_LEVEL=0",
+        "-DARDUINO_USB_CDC_ON_BOOT=0",
+        "@/Users/broderickmadden-scott/Library/Arduino15/packages/esp32/tools/esp32-libs/3.3.7/flags/defines",
+        "-I/Users/broderickmadden-scott/programming/Py/DSP-Motor/Build_v2/MCU/.staged/original_firmware",
+        "-iprefix",
+        "/Users/broderickmadden-scott/Library/Arduino15/packages/esp32/tools/esp32-libs/3.3.7/include/",
+        "@/Users/broderickmadden-scott/Library/Arduino15/packages/esp32/tools/esp32-libs/3.3.7/flags/includes",
+        "-I/Users/broderickmadden-scott/Library/Arduino15/packages/esp32/tools/esp32-libs/3.3.7/dio_qspi/include",
+        "-I/Users/broderickmadden-scott/Library/Arduino15/packages/esp32/hardware/esp32/3.3.7/cores/esp32",
+        "-I/Users/broderickmadden-scott/Library/Arduino15/packages/esp32/hardware/esp32/3.3.7/variants/nodemcu-32s",
+        "@/Users/broderickmadden-scott/programming/Py/DSP-Motor/Build_v2/MCU/build_original_nodemcu/build_opt.h",
+        "@/Users/broderickmadden-scott/programming/Py/DSP-Motor/Build_v2/MCU/build_original_nodemcu/file_opts",
+        "/Users/broderickmadden-scott/programming/Py/DSP-Motor/Build_v2/MCU/build_original_nodemcu/sketch/original_firmware.ino.cpp",
+        "-o",
+        "/dev/null"
+      ]
+    }
+  },
+  {
+    "missing_include_h": "Wire.h"
+  },
+  {
+    "added_include_path": "/Users/broderickmadden-scott/Library/Arduino15/packages/esp32/hardware/esp32/3.3.7/libraries/Wire/src"
+  },
+  {
+    "compile": {
+      "source_path": "/Users/broderickmadden-scott/programming/Py/DSP-Motor/Build_v2/MCU/build_original_nodemcu/sketch/original_firmware.ino.cpp",
+      "object_path": "/Users/broderickmadden-scott/programming/Py/DSP-Motor/Build_v2/MCU/build_original_nodemcu/sketch/original_firmware.ino.cpp.o",
+      "depfile_path": "/Users/broderickmadden-scott/programming/Py/DSP-Motor/Build_v2/MCU/build_original_nodemcu/sketch/original_firmware.ino.cpp.d"
+    },
+    "compile_task": {
+      "args": [
+        "/Users/broderickmadden-scott/Library/Arduino15/packages/esp32/tools/esp-x32/2511/bin/xtensa-esp32-elf-g++",
+        "-c",
+        "@/Users/broderickmadden-scott/Library/Arduino15/packages/esp32/tools/esp32-libs/3.3.7/flags/cpp_flags",
+        "-w",
+        "-Os",
+        "-Werror=return-type",
+        "-w",
+        "-x",
+        "c++",
+        "-E",
+        "-CC",
+        "-DF_CPU=240000000L",
+        "-DARDUINO=10607",
+        "-DARDUINO_NODEMCU_32S",
+        "-DARDUINO_ARCH_ESP32",
+        "-DARDUINO_BOARD=\"NODEMCU_32S\"",
+        "-DARDUINO_VARIANT=\"nodemcu-32s\"",
+        "-DARDUINO_PARTITION_default",
+        "-DARDUINO_HOST_OS=\"macosx\"",
+        "-DARDUINO_FQBN=\"esp32:esp32:nodemcu-32s\"",
+        "-DESP32=ESP32",
+        "-DCORE_DEBUG_LEVEL=0",
+        "-DARDUINO_USB_CDC_ON_BOOT=0",
+        "@/Users/broderickmadden-scott/Library/Arduino15/packages/esp32/tools/esp32-libs/3.3.7/flags/defines",
+        "-I/Users/broderickmadden-scott/programming/Py/DSP-Motor/Build_v2/MCU/.staged/original_firmware",
+        "-iprefix",
+        "/Users/broderickmadden-scott/Library/Arduino15/packages/esp32/tools/esp32-libs/3.3.7/include/",
+        "@/Users/broderickmadden-scott/Library/Arduino15/packages/esp32/tools/esp32-libs/3.3.7/flags/includes",
+        "-I/Users/broderickmadden-scott/Library/Arduino15/packages/esp32/tools/esp32-libs/3.3.7/dio_qspi/include",
+        "-I/Users/broderickmadden-scott/Library/Arduino15/packages/esp32/hardware/esp32/3.3.7/cores/esp32",
+        "-I/Users/broderickmadden-scott/Library/Arduino15/packages/esp32/hardware/esp32/3.3.7/variants/nodemcu-32s",
+        "-I/Users/broderickmadden-scott/Library/Arduino15/packages/esp32/hardware/esp32/3.3.7/libraries/Wire/src",
+        "@/Users/broderickmadden-scott/programming/Py/DSP-Motor/Build_v2/MCU/build_original_nodemcu/build_opt.h",
+        "@/Users/broderickmadden-scott/programming/Py/DSP-Motor/Build_v2/MCU/build_original_nodemcu/file_opts",
+        "/Users/broderickmadden-scott/programming/Py/DSP-Motor/Build_v2/MCU/build_original_nodemcu/sketch/original_firmware.ino.cpp",
+        "-o",
+        "/dev/null"
+      ]
+    }
+  },
+  {
+    "missing_include_h": "OneWire.h"
+  },
+  {
+    "added_include_path": "/Users/broderickmadden-scott/Documents/Arduino/libraries/OneWire"
+  },
+  {
+    "compile": {
+      "source_path": "/Users/broderickmadden-scott/programming/Py/DSP-Motor/Build_v2/MCU/build_original_nodemcu/sketch/original_firmware.ino.cpp",
+      "object_path": "/Users/broderickmadden-scott/programming/Py/DSP-Motor/Build_v2/MCU/build_original_nodemcu/sketch/original_firmware.ino.cpp.o",
+      "depfile_path": "/Users/broderickmadden-scott/programming/Py/DSP-Motor/Build_v2/MCU/build_original_nodemcu/sketch/original_firmware.ino.cpp.d"
+    },
+    "compile_task": {
+      "args": [
+        "/Users/broderickmadden-scott/Library/Arduino15/packages/esp32/tools/esp-x32/2511/bin/xtensa-esp32-elf-g++",
+        "-c",
+        "@/Users/broderickmadden-scott/Library/Arduino15/packages/esp32/tools/esp32-libs/3.3.7/flags/cpp_flags",
+        "-w",
+        "-Os",
+        "-Werror=return-type",
+        "-w",
+        "-x",
+        "c++",
+        "-E",
+        "-CC",
+        "-DF_CPU=240000000L",
+        "-DARDUINO=10607",
+        "-DARDUINO_NODEMCU_32S",
+        "-DARDUINO_ARCH_ESP32",
+        "-DARDUINO_BOARD=\"NODEMCU_32S\"",
+        "-DARDUINO_VARIANT=\"nodemcu-32s\"",
+        "-DARDUINO_PARTITION_default",
+        "-DARDUINO_HOST_OS=\"macosx\"",
+        "-DARDUINO_FQBN=\"esp32:esp32:nodemcu-32s\"",
+        "-DESP32=ESP32",
+        "-DCORE_DEBUG_LEVEL=0",
+        "-DARDUINO_USB_CDC_ON_BOOT=0",
+        "@/Users/broderickmadden-scott/Library/Arduino15/packages/esp32/tools/esp32-libs/3.3.7/flags/defines",
+        "-I/Users/broderickmadden-scott/programming/Py/DSP-Motor/Build_v2/MCU/.staged/original_firmware",
+        "-iprefix",
+        "/Users/broderickmadden-scott/Library/Arduino15/packages/esp32/tools/esp32-libs/3.3.7/include/",
+        "@/Users/broderickmadden-scott/Library/Arduino15/packages/esp32/tools/esp32-libs/3.3.7/flags/includes",
+        "-I/Users/broderickmadden-scott/Library/Arduino15/packages/esp32/tools/esp32-libs/3.3.7/dio_qspi/include",
+        "-I/Users/broderickmadden-scott/Library/Arduino15/packages/esp32/hardware/esp32/3.3.7/cores/esp32",
+        "-I/Users/broderickmadden-scott/Library/Arduino15/packages/esp32/hardware/esp32/3.3.7/variants/nodemcu-32s",
+        "-I/Users/broderickmadden-scott/Library/Arduino15/packages/esp32/hardware/esp32/3.3.7/libraries/Wire/src",
+        "-I/Users/broderickmadden-scott/Documents/Arduino/libraries/OneWire",
+        "@/Users/broderickmadden-scott/programming/Py/DSP-Motor/Build_v2/MCU/build_original_nodemcu/build_opt.h",
+        "@/Users/broderickmadden-scott/programming/Py/DSP-Motor/Build_v2/MCU/build_original_nodemcu/file_opts",
+        "/Users/broderickmadden-scott/programming/Py/DSP-Motor/Build_v2/MCU/build_original_nodemcu/sketch/original_firmware.ino.cpp",
+        "-o",
+        "/dev/null"
+      ]
+    }
+  },
+  {
+    "missing_include_h": "DallasTemperature.h"
+  },
+  {
+    "added_include_path": "/Users/broderickmadden-scott/Documents/Arduino/libraries/DallasTemperature"
+  },
+  {
+    "compile": {
+      "source_path": "/Users/broderickmadden-scott/programming/Py/DSP-Motor/Build_v2/MCU/build_original_nodemcu/sketch/original_firmware.ino.cpp",
+      "object_path": "/Users/broderickmadden-scott/programming/Py/DSP-Motor/Build_v2/MCU/build_original_nodemcu/sketch/original_firmware.ino.cpp.o",
+      "depfile_path": "/Users/broderickmadden-scott/programming/Py/DSP-Motor/Build_v2/MCU/build_original_nodemcu/sketch/original_firmware.ino.cpp.d"
+    },
+    "compile_task": {
+      "args": [
+        "/Users/broderickmadden-scott/Library/Arduino15/packages/esp32/tools/esp-x32/2511/bin/xtensa-esp32-elf-g++",
+        "-c",
+        "@/Users/broderickmadden-scott/Library/Arduino15/packages/esp32/tools/esp32-libs/3.3.7/flags/cpp_flags",
+        "-w",
+        "-Os",
+        "-Werror=return-type",
+        "-w",
+        "-x",
+        "c++",
+        "-E",
+        "-CC",
+        "-DF_CPU=240000000L",
+        "-DARDUINO=10607",
+        "-DARDUINO_NODEMCU_32S",
+        "-DARDUINO_ARCH_ESP32",
+        "-DARDUINO_BOARD=\"NODEMCU_32S\"",
+        "-DARDUINO_VARIANT=\"nodemcu-32s\"",
+        "-DARDUINO_PARTITION_default",
+        "-DARDUINO_HOST_OS=\"macosx\"",
+        "-DARDUINO_FQBN=\"esp32:esp32:nodemcu-32s\"",
+        "-DESP32=ESP32",
+        "-DCORE_DEBUG_LEVEL=0",
+        "-DARDUINO_USB_CDC_ON_BOOT=0",
+        "@/Users/broderickmadden-scott/Library/Arduino15/packages/esp32/tools/esp32-libs/3.3.7/flags/defines",
+        "-I/Users/broderickmadden-scott/programming/Py/DSP-Motor/Build_v2/MCU/.staged/original_firmware",
+        "-iprefix",
+        "/Users/broderickmadden-scott/Library/Arduino15/packages/esp32/tools/esp32-libs/3.3.7/include/",
+        "@/Users/broderickmadden-scott/Library/Arduino15/packages/esp32/tools/esp32-libs/3.3.7/flags/includes",
+        "-I/Users/broderickmadden-scott/Library/Arduino15/packages/esp32/tools/esp32-libs/3.3.7/dio_qspi/include",
+        "-I/Users/broderickmadden-scott/Library/Arduino15/packages/esp32/hardware/esp32/3.3.7/cores/esp32",
+        "-I/Users/broderickmadden-scott/Library/Arduino15/packages/esp32/hardware/esp32/3.3.7/variants/nodemcu-32s",
+        "-I/Users/broderickmadden-scott/Library/Arduino15/packages/esp32/hardware/esp32/3.3.7/libraries/Wire/src",
+        "-I/Users/broderickmadden-scott/Documents/Arduino/libraries/OneWire",
+        "-I/Users/broderickmadden-scott/Documents/Arduino/libraries/DallasTemperature",
+        "@/Users/broderickmadden-scott/programming/Py/DSP-Motor/Build_v2/MCU/build_original_nodemcu/build_opt.h",
+        "@/Users/broderickmadden-scott/programming/Py/DSP-Motor/Build_v2/MCU/build_original_nodemcu/file_opts",
+        "/Users/broderickmadden-scott/programming/Py/DSP-Motor/Build_v2/MCU/build_original_nodemcu/sketch/original_firmware.ino.cpp",
+        "-o",
+        "/dev/null"
+      ]
+    }
+  },
+  {
+    "missing_include_h": ""
+  },
+  {
+    "compile": {
+      "source_path": "/Users/broderickmadden-scott/Library/Arduino15/packages/esp32/hardware/esp32/3.3.7/libraries/Wire/src/Wire.cpp",
+      "object_path": "/Users/broderickmadden-scott/programming/Py/DSP-Motor/Build_v2/MCU/build_original_nodemcu/libraries/Wire/Wire.cpp.o",
+      "depfile_path": "/Users/broderickmadden-scott/programming/Py/DSP-Motor/Build_v2/MCU/build_original_nodemcu/libraries/Wire/Wire.cpp.d"
+    },
+    "compile_task": {
+      "args": [
+        "/Users/broderickmadden-scott/Library/Arduino15/packages/esp32/tools/esp-x32/2511/bin/xtensa-esp32-elf-g++",
+        "-c",
+        "@/Users/broderickmadden-scott/Library/Arduino15/packages/esp32/tools/esp32-libs/3.3.7/flags/cpp_flags",
+        "-w",
+        "-Os",
+        "-Werror=return-type",
+        "-w",
+        "-x",
+        "c++",
+        "-E",
+        "-CC",
+        "-DF_CPU=240000000L",
+        "-DARDUINO=10607",
+        "-DARDUINO_NODEMCU_32S",
+        "-DARDUINO_ARCH_ESP32",
+        "-DARDUINO_BOARD=\"NODEMCU_32S\"",
+        "-DARDUINO_VARIANT=\"nodemcu-32s\"",
+        "-DARDUINO_PARTITION_default",
+        "-DARDUINO_HOST_OS=\"macosx\"",
+        "-DARDUINO_FQBN=\"esp32:esp32:nodemcu-32s\"",
+        "-DESP32=ESP32",
+        "-DCORE_DEBUG_LEVEL=0",
+        "-DARDUINO_USB_CDC_ON_BOOT=0",
+        "@/Users/broderickmadden-scott/Library/Arduino15/packages/esp32/tools/esp32-libs/3.3.7/flags/defines",
+        "-I/Users/broderickmadden-scott/programming/Py/DSP-Motor/Build_v2/MCU/.staged/original_firmware",
+        "-iprefix",
+        "/Users/broderickmadden-scott/Library/Arduino15/packages/esp32/tools/esp32-libs/3.3.7/include/",
+        "@/Users/broderickmadden-scott/Library/Arduino15/packages/esp32/tools/esp32-libs/3.3.7/flags/includes",
+        "-I/Users/broderickmadden-scott/Library/Arduino15/packages/esp32/tools/esp32-libs/3.3.7/dio_qspi/include",
+        "-I/Users/broderickmadden-scott/Library/Arduino15/packages/esp32/hardware/esp32/3.3.7/cores/esp32",
+        "-I/Users/broderickmadden-scott/Library/Arduino15/packages/esp32/hardware/esp32/3.3.7/variants/nodemcu-32s",
+        "-I/Users/broderickmadden-scott/Library/Arduino15/packages/esp32/hardware/esp32/3.3.7/libraries/Wire/src",
+        "-I/Users/broderickmadden-scott/Documents/Arduino/libraries/OneWire",
+        "-I/Users/broderickmadden-scott/Documents/Arduino/libraries/DallasTemperature",
+        "@/Users/broderickmadden-scott/programming/Py/DSP-Motor/Build_v2/MCU/build_original_nodemcu/build_opt.h",
+        "@/Users/broderickmadden-scott/programming/Py/DSP-Motor/Build_v2/MCU/build_original_nodemcu/file_opts",
+        "/Users/broderickmadden-scott/Library/Arduino15/packages/esp32/hardware/esp32/3.3.7/libraries/Wire/src/Wire.cpp",
+        "-o",
+        "/dev/null"
+      ]
+    }
+  },
+  {
+    "missing_include_h": ""
+  },
+  {
+    "compile": {
+      "source_path": "/Users/broderickmadden-scott/Documents/Arduino/libraries/OneWire/OneWire.cpp",
+      "object_path": "/Users/broderickmadden-scott/programming/Py/DSP-Motor/Build_v2/MCU/build_original_nodemcu/libraries/OneWire/OneWire.cpp.o",
+      "depfile_path": "/Users/broderickmadden-scott/programming/Py/DSP-Motor/Build_v2/MCU/build_original_nodemcu/libraries/OneWire/OneWire.cpp.d"
+    },
+    "compile_task": {
+      "args": [
+        "/Users/broderickmadden-scott/Library/Arduino15/packages/esp32/tools/esp-x32/2511/bin/xtensa-esp32-elf-g++",
+        "-c",
+        "@/Users/broderickmadden-scott/Library/Arduino15/packages/esp32/tools/esp32-libs/3.3.7/flags/cpp_flags",
+        "-w",
+        "-Os",
+        "-Werror=return-type",
+        "-w",
+        "-x",
+        "c++",
+        "-E",
+        "-CC",
+        "-DF_CPU=240000000L",
+        "-DARDUINO=10607",
+        "-DARDUINO_NODEMCU_32S",
+        "-DARDUINO_ARCH_ESP32",
+        "-DARDUINO_BOARD=\"NODEMCU_32S\"",
+        "-DARDUINO_VARIANT=\"nodemcu-32s\"",
+        "-DARDUINO_PARTITION_default",
+        "-DARDUINO_HOST_OS=\"macosx\"",
+        "-DARDUINO_FQBN=\"esp32:esp32:nodemcu-32s\"",
+        "-DESP32=ESP32",
+        "-DCORE_DEBUG_LEVEL=0",
+        "-DARDUINO_USB_CDC_ON_BOOT=0",
+        "@/Users/broderickmadden-scott/Library/Arduino15/packages/esp32/tools/esp32-libs/3.3.7/flags/defines",
+        "-I/Users/broderickmadden-scott/programming/Py/DSP-Motor/Build_v2/MCU/.staged/original_firmware",
+        "-iprefix",
+        "/Users/broderickmadden-scott/Library/Arduino15/packages/esp32/tools/esp32-libs/3.3.7/include/",
+        "@/Users/broderickmadden-scott/Library/Arduino15/packages/esp32/tools/esp32-libs/3.3.7/flags/includes",
+        "-I/Users/broderickmadden-scott/Library/Arduino15/packages/esp32/tools/esp32-libs/3.3.7/dio_qspi/include",
+        "-I/Users/broderickmadden-scott/Library/Arduino15/packages/esp32/hardware/esp32/3.3.7/cores/esp32",
+        "-I/Users/broderickmadden-scott/Library/Arduino15/packages/esp32/hardware/esp32/3.3.7/variants/nodemcu-32s",
+        "-I/Users/broderickmadden-scott/Library/Arduino15/packages/esp32/hardware/esp32/3.3.7/libraries/Wire/src",
+        "-I/Users/broderickmadden-scott/Documents/Arduino/libraries/OneWire",
+        "-I/Users/broderickmadden-scott/Documents/Arduino/libraries/DallasTemperature",
+        "@/Users/broderickmadden-scott/programming/Py/DSP-Motor/Build_v2/MCU/build_original_nodemcu/build_opt.h",
+        "@/Users/broderickmadden-scott/programming/Py/DSP-Motor/Build_v2/MCU/build_original_nodemcu/file_opts",
+        "/Users/broderickmadden-scott/Documents/Arduino/libraries/OneWire/OneWire.cpp",
+        "-o",
+        "/dev/null"
+      ]
+    }
+  },
+  {
+    "missing_include_h": ""
+  },
+  {
+    "compile": {
+      "source_path": "/Users/broderickmadden-scott/Documents/Arduino/libraries/DallasTemperature/DallasTemperature.cpp",
+      "object_path": "/Users/broderickmadden-scott/programming/Py/DSP-Motor/Build_v2/MCU/build_original_nodemcu/libraries/DallasTemperature/DallasTemperature.cpp.o",
+      "depfile_path": "/Users/broderickmadden-scott/programming/Py/DSP-Motor/Build_v2/MCU/build_original_nodemcu/libraries/DallasTemperature/DallasTemperature.cpp.d"
+    },
+    "compile_task": {
+      "args": [
+        "/Users/broderickmadden-scott/Library/Arduino15/packages/esp32/tools/esp-x32/2511/bin/xtensa-esp32-elf-g++",
+        "-c",
+        "@/Users/broderickmadden-scott/Library/Arduino15/packages/esp32/tools/esp32-libs/3.3.7/flags/cpp_flags",
+        "-w",
+        "-Os",
+        "-Werror=return-type",
+        "-w",
+        "-x",
+        "c++",
+        "-E",
+        "-CC",
+        "-DF_CPU=240000000L",
+        "-DARDUINO=10607",
+        "-DARDUINO_NODEMCU_32S",
+        "-DARDUINO_ARCH_ESP32",
+        "-DARDUINO_BOARD=\"NODEMCU_32S\"",
+        "-DARDUINO_VARIANT=\"nodemcu-32s\"",
+        "-DARDUINO_PARTITION_default",
+        "-DARDUINO_HOST_OS=\"macosx\"",
+        "-DARDUINO_FQBN=\"esp32:esp32:nodemcu-32s\"",
+        "-DESP32=ESP32",
+        "-DCORE_DEBUG_LEVEL=0",
+        "-DARDUINO_USB_CDC_ON_BOOT=0",
+        "@/Users/broderickmadden-scott/Library/Arduino15/packages/esp32/tools/esp32-libs/3.3.7/flags/defines",
+        "-I/Users/broderickmadden-scott/programming/Py/DSP-Motor/Build_v2/MCU/.staged/original_firmware",
+        "-iprefix",
+        "/Users/broderickmadden-scott/Library/Arduino15/packages/esp32/tools/esp32-libs/3.3.7/include/",
+        "@/Users/broderickmadden-scott/Library/Arduino15/packages/esp32/tools/esp32-libs/3.3.7/flags/includes",
+        "-I/Users/broderickmadden-scott/Library/Arduino15/packages/esp32/tools/esp32-libs/3.3.7/dio_qspi/include",
+        "-I/Users/broderickmadden-scott/Library/Arduino15/packages/esp32/hardware/esp32/3.3.7/cores/esp32",
+        "-I/Users/broderickmadden-scott/Library/Arduino15/packages/esp32/hardware/esp32/3.3.7/variants/nodemcu-32s",
+        "-I/Users/broderickmadden-scott/Library/Arduino15/packages/esp32/hardware/esp32/3.3.7/libraries/Wire/src",
+        "-I/Users/broderickmadden-scott/Documents/Arduino/libraries/OneWire",
+        "-I/Users/broderickmadden-scott/Documents/Arduino/libraries/DallasTemperature",
+        "@/Users/broderickmadden-scott/programming/Py/DSP-Motor/Build_v2/MCU/build_original_nodemcu/build_opt.h",
+        "@/Users/broderickmadden-scott/programming/Py/DSP-Motor/Build_v2/MCU/build_original_nodemcu/file_opts",
+        "/Users/broderickmadden-scott/Documents/Arduino/libraries/DallasTemperature/DallasTemperature.cpp",
+        "-o",
+        "/dev/null"
+      ]
+    }
+  },
+  {
+    "missing_include_h": ""
+  }
+]

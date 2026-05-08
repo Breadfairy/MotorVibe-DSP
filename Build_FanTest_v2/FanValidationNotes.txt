@@ -1,0 +1,88 @@
+FanValidationNotes.txt
+
+Purpose:
+Build_FanTest_v2 is a Build_v2-derived fan validation build.
+
+It leaves the original Build_FanTest directory untouched.
+
+Current labels:
+
+    good
+    voltSag
+
+Training data layout:
+
+    data/training/main/good/*.csv
+    data/training/main/voltSag/*.csv
+
+Capture examples:
+
+    python3 src/capture.py good good_001.csv 10
+    python3 src/capture.py good good_002.csv 10
+    python3 src/capture.py voltSag voltSag_001.csv 10
+
+On Windows, pass the COM port as the fourth argument:
+
+    python src/capture.py good good_001.csv 10 COM5
+
+Train:
+
+    /Library/Frameworks/Python.framework/Versions/3.13/bin/python3 src/train.py
+
+Confusion matrix:
+
+    /Library/Frameworks/Python.framework/Versions/3.13/bin/python3 src/ml_charts.py
+
+Offline inference:
+
+    /Library/Frameworks/Python.framework/Versions/3.13/bin/python3 \
+        src/infer.py data/training/main/good/good_001.csv
+    /Library/Frameworks/Python.framework/Versions/3.13/bin/python3 \
+        src/infer.py data/training/main/voltSag/voltSag_001.csv
+
+Live validation:
+
+    /Library/Frameworks/Python.framework/Versions/3.13/bin/python3 \
+        src/live.py /dev/cu.usbserial-0001
+
+Current model:
+
+    outputs/models/fanClassifier.joblib
+
+Current ML pipeline:
+
+    StandardScaler
+    LogisticRegression
+
+Current ML features:
+
+    acc1 magnitude time signal
+    gyr1 magnitude time signal
+    acc2 magnitude time signal
+    gyr2 magnitude time signal
+    acc1_fundHz
+    acc1_fundMag
+    acc1_bpfoRms
+    acc1_bpfiRms
+    gyr1_fundHz
+    gyr1_fundMag
+    gyr1_bpfoRms
+    gyr1_bpfiRms
+    acc2_fundHz
+    acc2_fundMag
+    acc2_bpfoRms
+    acc2_bpfiRms
+    gyr2_fundHz
+    gyr2_fundMag
+    gyr2_bpfoRms
+    gyr2_bpfiRms
+
+Expected validation flow:
+
+1. Flash MCU/firmware_1.1.ino to the NodeMCU-32S.
+2. Capture multiple good fan recordings.
+3. Capture one or more lower-voltage voltSag recordings.
+4. Train the sklearn model.
+5. Generate the confusion matrix.
+6. Run live.py with the fan starting in good state.
+7. Slowly reduce fan voltage and watch voltSag probability rise.

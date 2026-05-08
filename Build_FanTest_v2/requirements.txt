@@ -1,0 +1,46 @@
+# Python requirements
+numpy
+pandas
+scipy
+matplotlib
+scikit-learn
+joblib
+pyserial
+
+# Hardware / firmware requirements
+#
+# MCU board:
+# - NodeMCU ESP-32S / ESP32-D0WD-V3 class board
+#
+# Arduino board package:
+# - ESP32 Arduino core
+# - FQBN: esp32:esp32:nodemcu-32s
+#
+# Arduino IDE upload instructions:
+# - Install "ESP32 by Espressif Systems" from Boards Manager.
+# - Select board: NodeMCU-32S.
+# - Select the correct serial port.
+# - Windows port example: COM5.
+# - Open Build_v2/MCU/firmware_1.1.ino.
+# - Upload normally from Arduino IDE.
+# - The Arduino IDE board selection "NodeMCU-32S" is equivalent to the
+#   command-line FQBN esp32:esp32:nodemcu-32s.
+#
+# USB serial driver:
+# - Install the driver for the board USB-UART chip.
+# - Common options are Silicon Labs CP210x or CH340/CH341.
+#
+# Serial settings:
+# - Baud rate: 1000000
+# - macOS port example: /dev/cu.usbserial-0001
+# - Windows port example: COM5
+#
+# Sensor bus:
+# - I2C SDA: GPIO 21
+# - I2C SCL: GPIO 22
+# - I2C clock: 1000000
+#
+# Sensors:
+# - MPU6050 at address 0x68
+# - MPU6050 at address 0x69
+# - DS18B20 temperature sensor on GPIO 4
