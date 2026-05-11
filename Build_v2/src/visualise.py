@@ -1,8 +1,14 @@
 ################################################################################
 # Imports                                                                      #
 ################################################################################
+import os
 from pathlib import Path
 import sys
+
+buildDir = Path(__file__).resolve().parents[1]
+mplConfigDir = buildDir / "outputs" / ".matplotlib"
+os.environ.setdefault("MPLBACKEND", "Agg")
+os.environ.setdefault("MPLCONFIGDIR", str(mplConfigDir))
 
 import matplotlib.pyplot as plt
 
@@ -12,10 +18,7 @@ import signals
 ################################################################################
 # variables/constants                                                          #
 ################################################################################
-# visualise.py is an offline checking tool.
-# It saves time-domain and FFT charts for one CSV recording.
-buildDir = Path(__file__).resolve().parents[1]
-trainDir = buildDir / "data" / "training" / "main"
+# Offline charts for one CSV recording.
 outDir = buildDir / "outputs" / "charts"
 sampleRate = 1000.0
 bgColor = [0.08, 0.03, 0.03]
@@ -26,6 +29,22 @@ bpfoColor = "tomato"
 bpfiColor = "seagreen"
 fundColor = "deepskyblue"
 plotMaxHz = 500.0
+
+# Human-readable names for saved signal charts.
+axisLabels = [
+    ("ax1", "MPU1 Acc X"),
+    ("ay1", "MPU1 Acc Y"),
+    ("az1", "MPU1 Acc Z"),
+    ("gx1", "MPU1 Gyr X"),
+    ("gy1", "MPU1 Gyr Y"),
+    ("gz1", "MPU1 Gyr Z"),
+    ("ax2", "MPU2 Acc X"),
+    ("ay2", "MPU2 Acc Y"),
+    ("az2", "MPU2 Acc Z"),
+    ("gx2", "MPU2 Gyr X"),
+    ("gy2", "MPU2 Gyr Y"),
+    ("gz2", "MPU2 Gyr Z"),
+]
 
 ################################################################################
 # helpers                                                                      #
@@ -51,33 +70,26 @@ def styleAx(ax):
 
 
 def main():
-    # Use a command line CSV if given.
-    # Otherwise fall back to a default training file for quick testing.
-    if len(sys.argv) > 1:
-        csvPath = Path(sys.argv[1])
-    else:
-        csvPath = trainDir / "good1.csv"
+    if len(sys.argv) < 2:
+        raise SystemExit("usage: python3 visualise.py path/to/recording.csv")
+    csvPath = Path(sys.argv[1])
 
-    # Load and clean the recording, then calculate the same time and FFT signals
-    # used by the training code.
     df = data.readCsv(csvPath)
     df = data.cleanFrame(df)
-    timeData = signals.timeSignals(df, sampleRate)
-    freqData = signals.fftSignals(
+    timeData = signals.plotTime(df, sampleRate)
+    freqData = signals.plotFreq(
         timeData,
         sampleRate,
         signals.fftConfig,
     )
 
-    # Save charts in a folder named after the CSV file.
     saveDir = outDir / csvPath.stem
     saveDir.mkdir(parents=True, exist_ok=True)
 
-    # First chart: raw time-domain signal for all 12 sensor axes.
+    # Raw time-domain axes.
     fig, axes = plt.subplots(4, 3, figsize=(14, 12))
     fig.patch.set_facecolor(bgColor)
-    for index, axisLabel in enumerate(signals.axisLabels):
-        # Place each axis into a 4 x 3 grid.
+    for index, axisLabel in enumerate(axisLabels):
         row = index // 3
         col = index % 3
         ax = axes[row, col]
@@ -96,12 +108,10 @@ def main():
     plt.savefig(timePath, facecolor=bgColor)
     plt.close(fig)
 
-    # Second chart: FFT spectrum for all 12 sensor axes.
-    # Each subplot also marks the detected fundamental and BPFO/BPFI bands.
+    # Raw-axis FFTs with order bands.
     fig, axes = plt.subplots(4, 3, figsize=(14, 12))
     fig.patch.set_facecolor(bgColor)
-    for index, axisLabel in enumerate(signals.axisLabels):
-        # Pull the pre-calculated spectrum and band values from freqData.
+    for index, axisLabel in enumerate(axisLabels):
         row = index // 3
         col = index % 3
         ax = axes[row, col]

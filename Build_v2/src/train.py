@@ -1,11 +1,18 @@
 ################################################################################
 # Imports                                                                      #
 ################################################################################
+import os
 from pathlib import Path
-import sys
+
+buildDir = Path(__file__).resolve().parents[1]
+mplConfigDir = buildDir / "outputs" / ".matplotlib"
+os.environ.setdefault("MPLBACKEND", "Agg")
+os.environ.setdefault("MPLCONFIGDIR", str(mplConfigDir))
 
 import joblib
+import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import classification_report
 from sklearn.metrics import confusion_matrix
@@ -13,43 +20,27 @@ from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
 
 import data
+import ml
 import signals
 
 ################################################################################
 # variables/constants                                                          #
 ################################################################################
-# Main project paths. Training reads labelled CSVs and writes one joblib model
-# bundle that live.py and infer.py can load later.
-buildDir = Path(__file__).resolve().parents[1]
+# Training paths.
 trainDir = buildDir / "data" / "training" / "main"
-compactModelPath = buildDir / "outputs" / "models" / "motorPumpClassifier.joblib"
-rawModelPath = buildDir / "outputs" / "models" / "motorPumpRawAxisClassifier.joblib"
+modelPath = buildDir / "outputs" / "models" / "motorPumpClassifier.joblib"
+chartDir = buildDir / "outputs" / "ML-charts"
 classNames = [
     "good",
     "bad_leak",
 ]
 
-# Default mode is the compact DSP feature model.
-# Run `python3 Build_v2/src/train.py raw` to train the raw-axis model instead.
-modelMode = "compact"
-if len(sys.argv) > 1:
-    modelMode = sys.argv[1]
-if modelMode not in ["compact", "raw"]:
-    raise SystemExit("mode must be compact or raw")
-if modelMode == "raw":
-    modelPath = rawModelPath
-else:
-    modelPath = compactModelPath
-
-# These values define the ML procedure.
-# One-second windows match the fan test, and 0.25 seconds gives overlap so each
-# recording produces more training examples.
+# Window settings.
 sampleRate = 1000.0
 winSecs = 1.0
 stepSecs = 0.25
 
-# Split each trusted main CSV by time order.
-# The unused folder is not read at all.
+# Time-order split for each CSV.
 trainFraction = 0.35
 valFraction = 0.25
 holdoutFraction = 1.0 - trainFraction - valFraction
@@ -59,9 +50,7 @@ holdoutFraction = 1.0 - trainFraction - valFraction
 ################################################################################
 
 
-# Finds the CSV recordings for one fixed class label.
-# Files can either be in a class folder or in one flat folder using the label
-# prefix, such as good_001.csv or bad_leak_001.csv.
+# Finds recordings for one class.
 def classCsvs(className):
     classDir = trainDir / className
     if classDir.exists():
@@ -69,9 +58,7 @@ def classCsvs(className):
     return sorted(trainDir.glob(f"{className}*.csv"))
 
 
-# Splits one cleaned CSV into train, validation, and holdout time blocks.
-# The blocks do not overlap. This keeps validation and holdout from using
-# exactly the same rows as training.
+# Splits one CSV by time.
 def splitFrame(df):
     rowCount = df.shape[0]
     trainEnd = int(rowCount * trainFraction)
@@ -83,33 +70,21 @@ def splitFrame(df):
     return trainDf, valDf, holdoutDf
 
 
-# Adds every window from one DataFrame segment into the selected feature lists.
-# This is the repeated signal flow:
-# segment -> one-second windows -> time signals -> FFT signals -> ML row.
+# Adds feature rows from one split.
 def addFrameFeatures(df, classIndex, featureRows, classRows):
     windows = data.windowFrames(df, sampleRate, winSecs, stepSecs)
 
-    # Each window becomes one ML row with the same class label as the source file.
     for windowFrame in windows:
         featureRows.append(featureRowFromWindow(windowFrame))
         classRows.append(classIndex)
 
 
-# Builds one feature row using the selected model mode.
+# Builds one compact feature row.
 def featureRowFromWindow(windowFrame):
-    if modelMode == "raw":
-        return signals.rawModelInput(windowFrame)
-
-    timeData = signals.timeSignals(windowFrame, sampleRate)
-    freqData = signals.fftSignals(
-        timeData,
-        sampleRate,
-        signals.fftConfig,
-    )
-    return signals.modelInput(timeData, freqData)
+    return ml.featureRowFromWindow(windowFrame, sampleRate)
 
 
-# Reads labelled CSV recordings and sends each time block to the right split.
+# Reads CSVs into the train, validation, and holdout lists.
 def addCsvFeatures(
     csvPaths,
     classIndex,
@@ -134,15 +109,14 @@ def addCsvFeatures(
         )
 
 
-# Converts Python lists into numpy arrays for sklearn.
-# sklearn expects a 2D feature matrix and a 1D class vector.
+# Converts rows into sklearn arrays.
 def matrixFromRows(featureRows, classRows):
     featureMatrix = np.vstack(featureRows).astype(np.float32)
     classVector = np.array(classRows, dtype=np.int64)
     return featureMatrix, classVector
 
 
-# Prints accuracy, confusion matrix, and classification report for one split.
+# Prints metrics for one split.
 def printScores(name, modelValue, featureRows, classRows):
     if len(featureRows) == 0:
         print(f"{name}Shape: none")
@@ -175,6 +149,100 @@ def printScores(name, modelValue, featureRows, classRows):
     )
     return acc
 
+
+# Builds a confusion matrix for one split.
+def buildConfusion(classifier, splitName):
+    trueRows = []
+    predRows = []
+
+    for classIndex, className in enumerate(classNames):
+        csvPaths = classCsvs(className)
+        for csvPath in csvPaths:
+            df = data.readCsv(csvPath)
+            df = data.cleanFrame(df)
+            trainDf, valDf, holdoutDf = splitFrame(df)
+            if splitName == "holdout":
+                splitDf = holdoutDf
+            else:
+                splitDf = valDf
+
+            featureMatrix = classifier.featureMatrixFromFrame(splitDf, clean=False)
+            pred = classifier.model.predict(featureMatrix)
+            for predIndex in pred:
+                trueRows.append(classIndex)
+                predRows.append(int(predIndex))
+
+    matrix = np.zeros((len(classNames), len(classNames)), dtype=np.int64)
+    for index in range(len(trueRows)):
+        matrix[trueRows[index], predRows[index]] += 1
+    return matrix
+
+
+# Saves one confusion matrix chart.
+def plotConfusion(matrix, title, fileName):
+    rowTotals = matrix.sum(axis=1, keepdims=True)
+    percent = np.divide(
+        matrix,
+        rowTotals,
+        out=np.zeros_like(matrix, dtype=np.float64),
+        where=rowTotals != 0,
+    ) * 100.0
+
+    fig, ax = plt.subplots(figsize=(8, 7))
+    image = ax.imshow(percent, cmap="Blues", vmin=0.0, vmax=100.0)
+    ax.set_title(title)
+    ax.set_xlabel("predicted label")
+    ax.set_ylabel("actual label")
+    ax.set_xticks(np.arange(len(classNames)))
+    ax.set_yticks(np.arange(len(classNames)))
+    ax.set_xticklabels(classNames, rotation=35, ha="right")
+    ax.set_yticklabels(classNames)
+
+    for row in range(matrix.shape[0]):
+        for col in range(matrix.shape[1]):
+            color = "white" if percent[row, col] >= 50.0 else "#222222"
+            ax.text(
+                col,
+                row,
+                f"{matrix[row, col]}\n{percent[row, col]:.1f}%",
+                ha="center",
+                va="center",
+                color=color,
+                fontsize=8,
+            )
+
+    cbar = fig.colorbar(image, ax=ax, fraction=0.04, pad=0.03)
+    cbar.set_label("row percentage")
+    fig.tight_layout()
+    fig.savefig(chartDir / fileName, dpi=180)
+    plt.close(fig)
+
+
+# Saves validation and holdout charts.
+def saveMlCharts(bundle):
+    chartDir.mkdir(parents=True, exist_ok=True)
+    classifier = ml.MotorPumpClassifier(bundle)
+    valMatrix = buildConfusion(classifier, "val")
+    holdoutMatrix = buildConfusion(classifier, "holdout")
+
+    valDf = pd.DataFrame(valMatrix, index=classNames, columns=classNames)
+    holdoutDf = pd.DataFrame(holdoutMatrix, index=classNames, columns=classNames)
+    valDf.to_csv(chartDir / "confusion_matrix_validation_counts.csv")
+    holdoutDf.to_csv(chartDir / "confusion_matrix_holdout_counts.csv")
+    plotConfusion(valMatrix, "Validation Confusion Matrix", "confusion_matrix.png")
+    plotConfusion(
+        valMatrix,
+        "Validation Confusion Matrix",
+        "confusion_matrix_validation.png",
+    )
+    plotConfusion(
+        holdoutMatrix,
+        "Holdout Confusion Matrix",
+        "confusion_matrix_holdout.png",
+    )
+
+    print("chartDir:", chartDir)
+
 ################################################################################
 # main functions                                                               #
 ################################################################################
@@ -182,9 +250,6 @@ def printScores(name, modelValue, featureRows, classRows):
 
 # Trains the sklearn model and saves the model bundle.
 def main():
-    # These lists collect the window-level feature rows before they are converted
-    # into numpy arrays for sklearn.
-    print("modelMode:", modelMode)
     featureRows = []
     classRows = []
     valFeatureRows = []
@@ -192,8 +257,6 @@ def main():
     holdoutFeatureRows = []
     holdoutClassRows = []
 
-    # Loop through each fixed class name and split each trusted main file by
-    # time range.
     for classIndex, className in enumerate(classNames):
         csvPaths = classCsvs(className)
         if len(csvPaths) == 0:
@@ -213,8 +276,6 @@ def main():
 
     featureMatrix, classVector = matrixFromRows(featureRows, classRows)
 
-    # StandardScaler keeps large-valued features from overpowering smaller ones.
-    # LogisticRegression is simple, fast, and matches the fan-test style.
     modelValue = make_pipeline(
         StandardScaler(),
         LogisticRegression(
@@ -224,8 +285,6 @@ def main():
     )
     modelValue.fit(featureMatrix, classVector)
 
-    # Print all split results so the user can see train, validation, and holdout
-    # behaviour from one run.
     trainAcc = printScores("train", modelValue, featureRows, classRows)
     valAcc = printScores("val", modelValue, valFeatureRows, valClassRows)
     holdoutAcc = printScores(
@@ -235,25 +294,15 @@ def main():
         holdoutClassRows,
     )
 
-    # Save the trained model and the settings needed to rebuild features later.
-    # live.py and infer.py rely on this bundle to use the same window size and
-    # label order as training.
-    if modelMode == "raw":
-        featureNames = signals.rawFeatureNames(int(sampleRate * winSecs))
-        featureMode = "raw_axes_1s"
-    else:
-        featureNames = signals.featureNames()
-        featureMode = "motor_compact_low_order_bearing_orders"
-
     bundle = {
         "model": modelValue,
         "labelNames": classNames,
         "sampleRate": sampleRate,
         "winSecs": winSecs,
         "stepSecs": stepSecs,
-        "featureNames": featureNames,
-        "featureMode": featureMode,
-        "modelMode": modelMode,
+        "featureNames": ml.featureNames(),
+        "featureMode": "motor_compact_low_order_bearing_orders",
+        "modelMode": "compact",
         "trainAcc": trainAcc,
         "valAcc": valAcc,
         "holdoutAcc": holdoutAcc,
@@ -264,6 +313,7 @@ def main():
 
     modelPath.parent.mkdir(parents=True, exist_ok=True)
     joblib.dump(bundle, modelPath)
+    saveMlCharts(bundle)
     print("modelPath:", modelPath)
 
 
