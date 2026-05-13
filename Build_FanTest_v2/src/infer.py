@@ -65,7 +65,9 @@ def main():
     if sourcePath.is_file():
         csvList = [sourcePath]
     else:
-        csvList = sorted(sourcePath.glob("*.csv"))
+        csvList = sorted(sourcePath.rglob("*.csv"))
+    if len(csvList) == 0:
+        raise SystemExit(f"no CSV files found under {sourcePath}")
 
     bundle = joblib.load(modelPath)
     modelValue = bundle["model"]

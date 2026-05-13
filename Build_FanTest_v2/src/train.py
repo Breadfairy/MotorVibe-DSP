@@ -155,15 +155,15 @@ def main():
         print("valShape: none")
         print("valAcc: no held-out files")
 
-    rowCount = int(sampleRate * winSecs)
     bundle = {
         "model": modelValue,
         "labelNames": classNames,
         "sampleRate": sampleRate,
         "winSecs": winSecs,
         "stepSecs": stepSecs,
-        "featureNames": signals.featureNames(rowCount),
-        "featureMode": "magnitude_time_bearing_orders",
+        "featureNames": signals.featureNames(),
+        "featureMode": "motor_compact_low_order_bearing_orders",
+        "modelMode": "compact",
         "trainAcc": trainAcc,
         "valAcc": valAcc,
     }

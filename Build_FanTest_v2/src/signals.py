@@ -37,7 +37,9 @@ axisLabels = [
 ]
 fftConfig = {
     "minHz": 1.0,
-    "maxHz": 120.0,
+    "maxHz": 70.0,
+    "rumbleLowHz": 20.0,
+    "lowOrderHighOrder": 3.0,
     "bpfoLowOrder": 3.0,
     "bpfoHighOrder": 5.0,
     "bpfiLowOrder": 5.0,
@@ -121,6 +123,13 @@ def timeSignals(windowFrame, sampleRate):
     out = {"t_s": t}
     for col in axisCols:
         out[col] = windowFrame[col].to_numpy(dtype=np.float64)
+    for groupName, colX, colY, colZ in axisGroups:
+        out[f"{groupName}Mag"] = combinedTimeMagnitude(
+            out,
+            colX,
+            colY,
+            colZ,
+        )
     return out
 
 
@@ -163,6 +172,13 @@ def fftSignals(timeData, sampleRate, fftConfigValue):
             fftConfigValue["minHz"],
             fftConfigValue["maxHz"],
         )
+        lowOrder = orderBand(
+            fundHz,
+            1.0,
+            fftConfigValue["lowOrderHighOrder"],
+            fftConfigValue["tolFraction"],
+        )
+        lowOrder = (fftConfigValue["rumbleLowHz"], lowOrder[1])
         bpfo = orderBand(
             fundHz,
             fftConfigValue["bpfoLowOrder"],
@@ -177,41 +193,46 @@ def fftSignals(timeData, sampleRate, fftConfigValue):
         )
         out[f"{groupName}FundHz"] = fundHz
         out[f"{groupName}FundMag"] = fundMag
+        out[f"{groupName}LowOrderRms"] = bandRms(
+            hz,
+            mag,
+            lowOrder[0],
+            lowOrder[1],
+        )
         out[f"{groupName}BpfoRms"] = bandRms(hz, mag, bpfo[0], bpfo[1])
         out[f"{groupName}BpfiRms"] = bandRms(hz, mag, bpfi[0], bpfi[1])
     return out
 
 
-# Builds magnitude time signals plus the engineered frequency features.
+# Builds the same compact summary/order-band feature set used by Build_v2.
 def modelInput(timeData, freqData):
     parts = []
     for groupName, colX, colY, colZ in axisGroups:
-        mag = combinedTimeMagnitude(timeData, colX, colY, colZ)
-        parts.append(mag.astype(np.float32))
-    for groupName, colX, colY, colZ in axisGroups:
-        parts.append(
-            np.array(
-                [
-                    freqData[f"{groupName}FundHz"],
-                    freqData[f"{groupName}FundMag"],
-                    freqData[f"{groupName}BpfoRms"],
-                    freqData[f"{groupName}BpfiRms"],
-                ],
-                dtype=np.float32,
-            )
-        )
+        mag = timeData[f"{groupName}Mag"]
+        stats = [
+            float(np.sqrt(np.mean(mag * mag))),
+            float(np.min(mag)),
+            float(np.max(mag)),
+            freqData[f"{groupName}FundHz"],
+            freqData[f"{groupName}FundMag"],
+            freqData[f"{groupName}LowOrderRms"],
+            freqData[f"{groupName}BpfoRms"],
+            freqData[f"{groupName}BpfiRms"],
+        ]
+        parts.append(np.array(stats, dtype=np.float32))
     return np.concatenate(parts).astype(np.float32)
 
 
 # Lists the feature names in the same order as modelInput().
-def featureNames(rowCount):
+def featureNames():
     names = []
     for groupName, colX, colY, colZ in axisGroups:
-        for index in range(rowCount):
-            names.append(f"{groupName}_mag_t{index}")
-    for groupName, colX, colY, colZ in axisGroups:
+        names.append(f"{groupName}_rms")
+        names.append(f"{groupName}_min")
+        names.append(f"{groupName}_max")
         names.append(f"{groupName}_fundHz")
         names.append(f"{groupName}_fundMag")
+        names.append(f"{groupName}_lowOrderRms")
         names.append(f"{groupName}_bpfoRms")
         names.append(f"{groupName}_bpfiRms")
     return names

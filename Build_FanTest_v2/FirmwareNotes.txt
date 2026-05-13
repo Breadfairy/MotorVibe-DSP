@@ -1,7 +1,7 @@
 FirmwareNotes.txt
 
 Current firmware file:
-Build_v2/MCU/firmware_1.1.ino
+Build_FanTest_v2/MCU/firmware_1.1.ino
 
 Reference firmware compared against:
 BuildBACKUP/rolhiltcodePATCHED.ino
@@ -65,7 +65,7 @@ What the new setup sequence does:
 - REG_USER_CTRL = 0x00 ensures auxiliary/FIFO/I2C master features are off.
 - The final delay gives the sensor time to settle before streaming starts.
 
-Verification result after flashing patched Build_v2 firmware:
+Verification result after flashing patched Build_FanTest_v2 firmware:
 
     rows: 10016
     timestamp_rate: 1000.11 Hz

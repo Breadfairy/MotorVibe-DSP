@@ -178,14 +178,7 @@ def fftSum(df, sensorNumber, sampleRate):
 def featureRowFromRows(rows, bundle):
     sampleRate = bundle["sampleRate"]
     df = pd.DataFrame(rows, columns=data.signalCols)
-    for col in data.signalCols:
-        df[col] = pd.to_numeric(df[col], errors="coerce")
-    df = df.replace([np.inf, -np.inf], np.nan)
-    df = df.interpolate(method="linear", limit_direction="both")
-    df = df.fillna(0.0)
-    t0 = float(df["t_us"].iloc[0])
-    df["t_us"] = df["t_us"] - t0
-    df["t_s"] = df["t_us"] / 1e6
+    df = data.cleanFrame(df)
     timeData = signals.timeSignals(df, sampleRate)
     freqData = signals.fftSignals(timeData, sampleRate, signals.fftConfig)
     return signals.modelInput(timeData, freqData)
@@ -199,15 +192,34 @@ def stateFromProb(probVector, labelNames):
     return state, confidence
 
 
-# Prints the current smoothed state to the terminal.
-def renderState(state, confidence, probVector, labelNames):
+# Prints the current raw and smoothed state to the terminal.
+def renderState(
+    rawState,
+    rawConfidence,
+    rawProbVector,
+    smoothState,
+    smoothConfidence,
+    smoothProbVector,
+    labelNames,
+):
     lines = [
-        f"state: {state}",
-        f"confidence: {confidence * 100.0:.1f}%",
+        f"state: {smoothState}",
+        f"confidence: {smoothConfidence * 100.0:.1f}%",
+        "",
+        "smoothed probabilities:",
+    ]
+    for index, labelName in enumerate(labelNames):
+        lines.append(f"{labelName}: {smoothProbVector[index] * 100.0:.1f}%")
+
+    lines += [
+        "",
+        "raw probabilities:",
+        f"raw state: {rawState}",
+        f"raw confidence: {rawConfidence * 100.0:.1f}%",
         "",
     ]
     for index, labelName in enumerate(labelNames):
-        lines.append(f"{labelName}: {probVector[index] * 100.0:.1f}%")
+        lines.append(f"{labelName}: {rawProbVector[index] * 100.0:.1f}%")
     text = "\n".join(lines)
     print(f"\x1b[2J\x1b[H{text}", end="", flush=True)
 
@@ -438,6 +450,11 @@ def main():
         port = sys.argv[1]
     if port is None:
         port = detectPort()
+    if port is None:
+        raise SystemExit(
+            "No USB serial port found. Pass the port explicitly, for example: "
+            "python3 src/live.py /dev/cu.usbserial-0001"
+        )
 
     bundle = joblib.load(modelPath)
     modelValue = bundle["model"]
@@ -530,8 +547,17 @@ def main():
                 rawProbRows,
                 elapsedSecs,
             )
+            rawState, rawConfidence = stateFromProb(rawProbVector, labelNames)
             state, confidence = stateFromProb(probVector, labelNames)
-            renderState(state, confidence, probVector, labelNames)
+            renderState(
+                rawState,
+                rawConfidence,
+                rawProbVector,
+                state,
+                confidence,
+                probVector,
+                labelNames,
+            )
             appendProbHistory(probTimes, probRows, elapsedSecs, rawProbVector)
             updateProbFig(liveFigs["prob"], probTimes, probRows, labelNames)
             plotDirty = True

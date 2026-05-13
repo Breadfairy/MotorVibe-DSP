@@ -1,2 +1,3 @@
 MCU/build/
+MCU/.staged/
 outputs/.matplotlib/

@@ -56,26 +56,72 @@ Current ML pipeline:
 
 Current ML features:
 
-    acc1 magnitude time signal
-    gyr1 magnitude time signal
-    acc2 magnitude time signal
-    gyr2 magnitude time signal
+    compact 32-feature summary from 1-second windows
+    four sensor groups:
+        acc1, gyr1, acc2, gyr2
+    eight features per group:
+        rms
+        min
+        max
+        fundHz
+        fundMag
+        lowOrderRms
+        bpfoRms
+        bpfiRms
+
+Feature names:
+
+    acc1_rms
+    acc1_min
+    acc1_max
     acc1_fundHz
     acc1_fundMag
+    acc1_lowOrderRms
     acc1_bpfoRms
     acc1_bpfiRms
+    gyr1_rms
+    gyr1_min
+    gyr1_max
     gyr1_fundHz
     gyr1_fundMag
+    gyr1_lowOrderRms
     gyr1_bpfoRms
     gyr1_bpfiRms
+    acc2_rms
+    acc2_min
+    acc2_max
     acc2_fundHz
     acc2_fundMag
+    acc2_lowOrderRms
     acc2_bpfoRms
     acc2_bpfiRms
+    gyr2_rms
+    gyr2_min
+    gyr2_max
     gyr2_fundHz
     gyr2_fundMag
+    gyr2_lowOrderRms
     gyr2_bpfoRms
     gyr2_bpfiRms
+
+Current verified results:
+
+    Training:
+        good_001.csv
+        voltSag_001.csv
+        1434 windows
+        100.00% accuracy
+
+    Validation:
+        good_002.csv
+        voltSag_002.csv
+        1434 windows
+        100.00% accuracy
+
+    Validation confusion matrix:
+
+        [[717   0]
+         [  0 717]]
 
 Expected validation flow:
 
