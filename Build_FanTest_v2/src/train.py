@@ -2,8 +2,15 @@
 # Imports                                                                      #
 ################################################################################
 from pathlib import Path
+import os
+
+buildDir = Path(__file__).resolve().parents[1]
+mplConfigDir = buildDir / "outputs" / ".matplotlib"
+os.environ.setdefault("MPLBACKEND", "Agg")
+os.environ.setdefault("MPLCONFIGDIR", str(mplConfigDir))
 
 import joblib
+import matplotlib.pyplot as plt
 import numpy as np
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import classification_report
@@ -17,10 +24,10 @@ import signals
 ################################################################################
 # variables/constants                                                          #
 ################################################################################
-buildDir = Path(__file__).resolve().parents[1]
 trainDir = buildDir / "data" / "training" / "main"
 modelPath = buildDir / "outputs" / "models" / "fanClassifier.joblib"
-classNames = ["good", "voltSag"]
+chartDir = buildDir / "outputs" / "ML-charts"
+labels = ["good", "voltSag", "obstruction"]
 sampleRate = 1000.0
 winSecs = 1.0
 stepSecs = 0.25
@@ -32,20 +39,11 @@ valFileCount = 1
 
 
 # Finds the CSV recordings for one fixed class label.
-def classCsvs(className):
-    classDir = trainDir / className
+def labelCsvs(label):
+    classDir = trainDir / label
     if classDir.exists():
         return sorted(classDir.glob("*.csv"))
-    return sorted(trainDir.glob(f"{className}*.csv"))
-
-
-# Keeps the newest CSV file for validation and uses the rest for training.
-def splitCsvs(csvPaths):
-    if len(csvPaths) <= valFileCount:
-        return csvPaths, []
-    trainCsvs = csvPaths[:-valFileCount]
-    valCsvs = csvPaths[-valFileCount:]
-    return trainCsvs, valCsvs
+    return sorted(trainDir.glob(f"{label}*.csv"))
 
 
 # Converts CSV recordings into labelled feature rows.
@@ -65,11 +63,47 @@ def addCsvFeatures(csvPaths, classIndex, featureRows, classRows):
             classRows.append(classIndex)
 
 
-# Converts Python lists into numpy arrays for sklearn.
-def matrixFromRows(featureRows, classRows):
-    featureMatrix = np.vstack(featureRows).astype(np.float32)
-    classVector = np.array(classRows, dtype=np.int64)
-    return featureMatrix, classVector
+# Saves the validation confusion matrix as a PNG chart.
+def saveConfusionPlot(matrix):
+    rowTotals = matrix.sum(axis=1, keepdims=True)
+    percent = np.divide(
+        matrix,
+        rowTotals,
+        out=np.zeros_like(matrix, dtype=np.float64),
+        where=rowTotals != 0,
+    ) * 100.0
+
+    fig, ax = plt.subplots(figsize=(8, 7))
+    image = ax.imshow(percent, cmap="Blues", vmin=0.0, vmax=100.0)
+    ax.set_title("Confusion Matrix")
+    ax.set_xlabel("predicted label")
+    ax.set_ylabel("actual label")
+    ax.set_xticks(np.arange(len(labels)))
+    ax.set_yticks(np.arange(len(labels)))
+    ax.set_xticklabels(labels, rotation=35, ha="right")
+    ax.set_yticklabels(labels)
+
+    for row in range(matrix.shape[0]):
+        for col in range(matrix.shape[1]):
+            color = "white" if percent[row, col] >= 50.0 else "#222222"
+            ax.text(
+                col,
+                row,
+                f"{matrix[row, col]}\n{percent[row, col]:.1f}%",
+                ha="center",
+                va="center",
+                color=color,
+                fontsize=8,
+            )
+
+    cbar = fig.colorbar(image, ax=ax, fraction=0.04, pad=0.03)
+    cbar.set_label("row percentage")
+    fig.tight_layout()
+
+    plotPath = chartDir / "confusion_matrix.png"
+    fig.savefig(plotPath, dpi=180)
+    plt.close(fig)
+    return plotPath
 
 ################################################################################
 # main functions                                                               #
@@ -78,30 +112,49 @@ def matrixFromRows(featureRows, classRows):
 
 # Trains the sklearn model and saves the model bundle.
 def main():
+
+
     featureRows = []
     classRows = []
     valFeatureRows = []
     valClassRows = []
 
-    for classIndex, className in enumerate(classNames):
-        csvPaths = classCsvs(className)
-        trainCsvs, valCsvs = splitCsvs(csvPaths)
+
+    # BUILD TRAINING AND VALIDATION FEATURE SETS
+    for label in labels:
+        csvPaths = labelCsvs(label)
+        if len(csvPaths) < valFileCount + 1:
+            raise SystemExit(
+                f"need at least {valFileCount + 1} CSV files for label: {label}")
+
+    for classIndex, label in enumerate(labels):
+        csvPaths = labelCsvs(label)
+        trainCsvs = csvPaths[:-valFileCount]
+        valCsvs = csvPaths[-valFileCount:]
+
         addCsvFeatures(trainCsvs, classIndex, featureRows, classRows)
         addCsvFeatures(valCsvs, classIndex, valFeatureRows, valClassRows)
 
-    featureMatrix, classVector = matrixFromRows(featureRows, classRows)
 
-    modelValue = make_pipeline(
+    # CORE ML TRANINING
+    featureMatrix = np.vstack(featureRows).astype(np.float32)
+    classVector = np.array(classRows, dtype=np.int64)
+    labelIndexes = list(range(len(labels)))
+
+    model = make_pipeline(
         StandardScaler(),
         LogisticRegression(
             max_iter=1000,
             class_weight="balanced",
         ),
     )
-    modelValue.fit(featureMatrix, classVector)
-    trainAcc = modelValue.score(featureMatrix, classVector)
-    trainPred = modelValue.predict(featureMatrix)
+    model.fit(featureMatrix, classVector)
 
+    trainAcc = model.score(featureMatrix, classVector)
+    trainPred = model.predict(featureMatrix)
+
+
+    # PRINT TRAINING RESULTS AND SAVE MODEL BUNDLE
     print("trainShape:", featureMatrix.shape)
     print("trainAcc:", f"{trainAcc * 100.0:.2f}%")
     print("trainConfusion:")
@@ -109,55 +162,52 @@ def main():
         confusion_matrix(
             classVector,
             trainPred,
-            labels=list(range(len(classNames))),
-        )
-    )
+            labels=labelIndexes,))
+
     print("trainReport:")
     print(
         classification_report(
             classVector,
             trainPred,
-            labels=list(range(len(classNames))),
-            target_names=classNames,
-            zero_division=0,
-        )
-    )
+            labels=labelIndexes,
+            target_names=labels,
+            zero_division=0,))
 
     valAcc = None
     if len(valFeatureRows) > 0:
-        valFeatureMatrix, valClassVector = matrixFromRows(
-            valFeatureRows,
-            valClassRows,
-        )
-        valAcc = modelValue.score(valFeatureMatrix, valClassVector)
-        valPred = modelValue.predict(valFeatureMatrix)
+        valFeatureMatrix = np.vstack(valFeatureRows).astype(np.float32)
+        valClassVector = np.array(valClassRows, dtype=np.int64)
+        valAcc = model.score(valFeatureMatrix, valClassVector)
+        valPred = model.predict(valFeatureMatrix)
+        valMatrix = confusion_matrix(
+            valClassVector,
+            valPred,
+            labels=labelIndexes,)
+
         print("valShape:", valFeatureMatrix.shape)
         print("valAcc:", f"{valAcc * 100.0:.2f}%")
         print("valConfusion:")
-        print(
-            confusion_matrix(
-                valClassVector,
-                valPred,
-                labels=list(range(len(classNames))),
-            )
-        )
+        print(valMatrix)
         print("valReport:")
         print(
             classification_report(
                 valClassVector,
                 valPred,
-                labels=list(range(len(classNames))),
-                target_names=classNames,
-                zero_division=0,
-            )
-        )
+                labels=labelIndexes,
+                target_names=labels,
+                zero_division=0,))
+
+
+        chartDir.mkdir(parents=True, exist_ok=True)
+        plotPath = saveConfusionPlot(valMatrix)
+        print("confusionPlot:", plotPath)
     else:
         print("valShape: none")
         print("valAcc: no held-out files")
 
     bundle = {
-        "model": modelValue,
-        "labelNames": classNames,
+        "model": model,
+        "labelNames": labels,
         "sampleRate": sampleRate,
         "winSecs": winSecs,
         "stepSecs": stepSecs,
@@ -165,8 +215,7 @@ def main():
         "featureMode": "motor_compact_low_order_bearing_orders",
         "modelMode": "compact",
         "trainAcc": trainAcc,
-        "valAcc": valAcc,
-    }
+        "valAcc": valAcc,}
 
     modelPath.parent.mkdir(parents=True, exist_ok=True)
     joblib.dump(bundle, modelPath)

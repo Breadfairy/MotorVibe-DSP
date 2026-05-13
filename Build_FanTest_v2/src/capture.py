@@ -15,12 +15,11 @@ import serial
 ################################################################################
 buildDir = Path(__file__).resolve().parents[1]
 outRoot = buildDir / "data" / "training" / "main"
-port = "/dev/cu.usbserial-0001"
+defaultPort = "/dev/cu.usbserial-0001"
 baudRate = 1000000
 timeout = 1.0
-captureSec = 10.0
-labelName = "good"
-fileName = ""
+defaultSeconds = 10.0
+defaultLabel = "good"
 bufferSampleCount = 32
 recordFormat = "<I12hf"
 accelScale = 16384.0
@@ -46,37 +45,11 @@ csvColumns = [
     "gz2",
     "tempC",
 ]
-validLabels = ["good", "voltSag"]
+validLabels = ["good", "voltSag", "obstruction"]
 
 ################################################################################
 # helpers                                                                      #
 ################################################################################
-
-
-# Reads the label, file name, capture time, and optional port.
-def parseArgs():
-    global labelName
-    global fileName
-    global captureSec
-    global port
-
-    if len(sys.argv) > 1:
-        labelName = sys.argv[1]
-    if len(sys.argv) > 2:
-        fileName = sys.argv[2]
-    if len(sys.argv) > 3:
-        captureSec = float(sys.argv[3])
-    if len(sys.argv) > 4:
-        port = sys.argv[4]
-
-    if labelName not in validLabels:
-        raise SystemExit("label must be good or voltSag")
-
-    if fileName == "":
-        stamp = time.strftime("%Y%m%d_%H%M%S")
-        fileName = f"{labelName}_{stamp}.csv"
-    if not fileName.endswith(".csv"):
-        fileName += ".csv"
 
 
 # Waits for the MCU ready message and starts streaming.
@@ -136,14 +109,35 @@ def packetRow(packetValues, firstTUsRaw):
 
 # Captures one labelled recording into the training data folder.
 def main():
-    parseArgs()
+    label = defaultLabel
+    fileName = ""
+    seconds = defaultSeconds
+    port = defaultPort
 
-    outDir = outRoot / labelName
+    if len(sys.argv) > 1:
+        label = sys.argv[1]
+    if len(sys.argv) > 2:
+        fileName = sys.argv[2]
+    if len(sys.argv) > 3:
+        seconds = float(sys.argv[3])
+    if len(sys.argv) > 4:
+        port = sys.argv[4]
+
+    if label not in validLabels:
+        raise SystemExit(f"label must be one of: {', '.join(validLabels)}")
+
+    if fileName == "":
+        stamp = time.strftime("%Y%m%d_%H%M%S")
+        fileName = f"{label}_{stamp}.csv"
+    if not fileName.endswith(".csv"):
+        fileName += ".csv"
+
+    outDir = outRoot / label
     outDir.mkdir(parents=True, exist_ok=True)
     savePath = outDir / fileName
 
-    print(f"starting capture of {savePath.name} for {captureSec} seconds")
-    print(f"label: {labelName}")
+    print(f"starting capture of {savePath.name} for {seconds} seconds")
+    print(f"label: {label}")
     print(f"port: {port}")
     print(f"baudRate: {baudRate}")
 
@@ -161,7 +155,7 @@ def main():
             waitForReady(link)
             startTime = time.perf_counter()
 
-            while (time.perf_counter() - startTime) < captureSec:
+            while (time.perf_counter() - startTime) < seconds:
                 newBytes = link.read(bufferSize)
                 if len(newBytes) == 0:
                     continue

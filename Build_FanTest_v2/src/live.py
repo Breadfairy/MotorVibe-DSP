@@ -27,7 +27,7 @@ import signals
 ################################################################################
 buildDir = Path(__file__).resolve().parents[1]
 modelPath = buildDir / "outputs" / "models" / "fanClassifier.joblib"
-port = None
+defaultPort = None
 baudRate = 1000000
 timeout = 1.0
 recordFormat = "<I12hf"
@@ -143,18 +143,13 @@ def styleAx(ax):
     )
 
 
-# Returns the three acceleration column names for one MPU.
-def accelCols(sensorNumber):
-    return [
+# Calculates acceleration magnitude for the live time plot.
+def accelMagnitude(df, sensorNumber):
+    cols = [
         f"ax{sensorNumber}",
         f"ay{sensorNumber}",
         f"az{sensorNumber}",
     ]
-
-
-# Calculates acceleration magnitude for the live time plot.
-def accelMagnitude(df, sensorNumber):
-    cols = accelCols(sensorNumber)
     x = df[cols[0]].to_numpy(dtype=np.float64)
     y = df[cols[1]].to_numpy(dtype=np.float64)
     z = df[cols[2]].to_numpy(dtype=np.float64)
@@ -163,7 +158,11 @@ def accelMagnitude(df, sensorNumber):
 
 # Builds the summed acceleration FFT used by the live FFT plot.
 def fftSum(df, sensorNumber, sampleRate):
-    cols = accelCols(sensorNumber)
+    cols = [
+        f"ax{sensorNumber}",
+        f"ay{sensorNumber}",
+        f"az{sensorNumber}",
+    ]
     sumParts = []
     hz = None
     for col in cols:
@@ -184,14 +183,6 @@ def featureRowFromRows(rows, bundle):
     return signals.modelInput(timeData, freqData)
 
 
-# Converts probabilities into the top label and confidence value.
-def stateFromProb(probVector, labelNames):
-    topIndex = int(np.argmax(probVector))
-    state = labelNames[topIndex]
-    confidence = float(probVector[topIndex])
-    return state, confidence
-
-
 # Prints the current raw and smoothed state to the terminal.
 def renderState(
     rawState,
@@ -200,26 +191,28 @@ def renderState(
     smoothState,
     smoothConfidence,
     smoothProbVector,
-    labelNames,
+    labels,
 ):
     lines = [
-        f"state: {smoothState}",
-        f"confidence: {smoothConfidence * 100.0:.1f}%",
-        "",
-        "smoothed probabilities:",
+        "\nRAW STREAM",
+        "-----------------------------",
+        f"state: {rawState}",
+        f"confidence: {rawConfidence * 100.0:.1f}%",
+        "\nSplits:",
     ]
-    for index, labelName in enumerate(labelNames):
-        lines.append(f"{labelName}: {smoothProbVector[index] * 100.0:.1f}%")
+    for index, label in enumerate(labels):
+        lines.append(f"{label}: {rawProbVector[index] * 100.0:.1f}%")
 
     lines += [
-        "",
-        "raw probabilities:",
-        f"raw state: {rawState}",
-        f"raw confidence: {rawConfidence * 100.0:.1f}%",
-        "",
+        "\n\nSMOOTHED",
+        "-----------------------------",
+        f"state: {smoothState}",
+        f"confidence: {smoothConfidence * 100.0:.1f}%",
+        "\nSplits",
     ]
-    for index, labelName in enumerate(labelNames):
-        lines.append(f"{labelName}: {rawProbVector[index] * 100.0:.1f}%")
+    for index, label in enumerate(labels):
+        lines.append(f"{label}: {smoothProbVector[index] * 100.0:.1f}%")
+
     text = "\n".join(lines)
     print(f"\x1b[2J\x1b[H{text}", end="", flush=True)
 
@@ -291,19 +284,19 @@ def buildFftFig(ax):
 
 
 # Creates the raw probability trace subplot.
-def buildProbFig(ax, labelNames):
+def buildProbFig(ax, labels):
     ax.set_title("Raw Model Probability", color=textColor)
     ax.set_xlabel("elapsed s", color=textColor)
     ax.set_ylabel("probability %", color=textColor)
     ax.set_ylim(0.0, 100.0)
     lines = []
-    for index, labelName in enumerate(labelNames):
+    for index, label in enumerate(labels):
         line, = ax.plot(
             [],
             [],
             color=classColors[index],
             linewidth=1.2,
-            label=labelName,
+            label=label,
         )
         lines.append(line)
     ax.legend(frameon=False, labelcolor=textColor, loc="upper left")
@@ -314,7 +307,7 @@ def buildProbFig(ax, labelNames):
 
 
 # Creates the single live figure with all three subplots.
-def buildLiveFigs(labelNames):
+def buildLiveFigs(labels):
     plt.ion()
     fig, axes = plt.subplots(3, 1, figsize=(9, 9))
     fig.patch.set_facecolor(bgColor)
@@ -325,7 +318,7 @@ def buildLiveFigs(labelNames):
         "fig": fig,
         "mag": buildMagnitudeFig(axes[0]),
         "fft": buildFftFig(axes[1]),
-        "prob": buildProbFig(axes[2], labelNames),
+        "prob": buildProbFig(axes[2], labels),
     }
     fig.tight_layout()
     plt.show(block=False)
@@ -386,23 +379,15 @@ def updateFftFig(figData, df, sampleRate):
 
 
 # Updates the raw class probability lines.
-def updateProbFig(figData, probTimes, probRows, labelNames):
+def updateProbFig(figData, probTimes, probRows, labels):
     x = np.array(probTimes, dtype=np.float64)
     y = np.vstack(probRows).astype(np.float64) * 100.0
-    for index in range(len(labelNames)):
+    for index in range(len(labels)):
         figData["lines"][index].set_data(x, y[:, index])
     if len(x) > 1:
         figData["ax"].set_xlim(max(0.0, x[-1] - probHistorySecs), x[-1])
     else:
         figData["ax"].set_xlim(0.0, probHistorySecs)
-
-
-# Updates the fast visual plots from the newest live rows.
-def updateVisualFigs(figs, rows, sampleRate, visualRows):
-    viewRows = rows[-visualRows:]
-    df = pd.DataFrame(viewRows, columns=data.signalCols)
-    updateMagnitudeFig(figs["mag"], df)
-    updateFftFig(figs["fft"], df, sampleRate)
 
 
 # Gives matplotlib time to redraw without blocking every loop pass.
@@ -445,7 +430,7 @@ def smoothProbVector(rawProbTimes, rawProbRows, elapsedSecs):
 
 # Runs the live serial, plotting, and inference loop.
 def main():
-    global port
+    port = defaultPort
     if len(sys.argv) > 1:
         port = sys.argv[1]
     if port is None:
@@ -457,12 +442,12 @@ def main():
         )
 
     bundle = joblib.load(modelPath)
-    modelValue = bundle["model"]
-    labelNames = bundle["labelNames"]
+    model = bundle["model"]
+    labels = bundle["labelNames"]
     winRows = int(bundle["sampleRate"] * bundle["winSecs"])
     visualRows = int(bundle["sampleRate"] * plotSecs)
     keepRows = max(winRows, visualRows)
-    liveFigs = buildLiveFigs(labelNames)
+    figs = buildLiveFigs(labels)
 
     rows = []
     remBytes = b""
@@ -511,30 +496,28 @@ def main():
             now = time.perf_counter()
             if now - lastVisualUpdate >= visualRefreshSecs:
                 lastVisualUpdate = now
-                updateVisualFigs(
-                    liveFigs,
-                    rows,
-                    bundle["sampleRate"],
-                    visualRows,
-                )
+                viewRows = rows[-visualRows:]
+                df = pd.DataFrame(viewRows, columns=data.signalCols)
+                updateMagnitudeFig(figs["mag"], df)
+                updateFftFig(figs["fft"], df, bundle["sampleRate"])
                 plotDirty = True
 
             if len(rows) < winRows:
                 if plotDirty and now - lastPlotEvent >= plotEventSecs:
-                    servicePlot(liveFigs["fig"])
+                    servicePlot(figs["fig"])
                     plotDirty = False
                     lastPlotEvent = now
                 continue
             if now - lastInferUpdate < inferRefreshSecs:
                 if plotDirty and now - lastPlotEvent >= plotEventSecs:
-                    servicePlot(liveFigs["fig"])
+                    servicePlot(figs["fig"])
                     plotDirty = False
                     lastPlotEvent = now
                 continue
             lastInferUpdate = now
 
             featureRow = featureRowFromRows(rows[-winRows:], bundle)
-            rawProbVector = modelValue.predict_proba([featureRow])[0]
+            rawProbVector = model.predict_proba([featureRow])[0]
             elapsedSecs = now - startTime
             appendProbHistory(
                 rawProbTimes,
@@ -547,8 +530,12 @@ def main():
                 rawProbRows,
                 elapsedSecs,
             )
-            rawState, rawConfidence = stateFromProb(rawProbVector, labelNames)
-            state, confidence = stateFromProb(probVector, labelNames)
+            rawIndex = int(np.argmax(rawProbVector))
+            rawState = labels[rawIndex]
+            rawConfidence = float(rawProbVector[rawIndex])
+            stateIndex = int(np.argmax(probVector))
+            state = labels[stateIndex]
+            confidence = float(probVector[stateIndex])
             renderState(
                 rawState,
                 rawConfidence,
@@ -556,14 +543,14 @@ def main():
                 state,
                 confidence,
                 probVector,
-                labelNames,
+                labels,
             )
             appendProbHistory(probTimes, probRows, elapsedSecs, rawProbVector)
-            updateProbFig(liveFigs["prob"], probTimes, probRows, labelNames)
+            updateProbFig(figs["prob"], probTimes, probRows, labels)
             plotDirty = True
 
             if plotDirty and now - lastPlotEvent >= plotEventSecs:
-                servicePlot(liveFigs["fig"])
+                servicePlot(figs["fig"])
                 plotDirty = False
                 lastPlotEvent = now
 
