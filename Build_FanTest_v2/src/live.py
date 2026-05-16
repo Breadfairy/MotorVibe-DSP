@@ -41,7 +41,7 @@ bufferSize = recordSize * bufferSampleCount
 plotSecs = 2.0
 visualRefreshSecs = 0.1
 plotEventSecs = 0.25
-inferRefreshSecs = 0.5
+inferRefreshSecs = 0.25
 probSmoothSecs = 5.0
 probHistorySecs = 60.0
 plotMaxHz = 500.0
@@ -62,6 +62,10 @@ classColors = [
     "#f4a261",
     "#8e5ea2",
     "#6c757d",
+    "#e76f51",
+    "#00a896",
+    "#f72585",
+    "#90be6d",
 ]
 
 ################################################################################
@@ -294,7 +298,7 @@ def buildProbFig(ax, labels):
         line, = ax.plot(
             [],
             [],
-            color=classColors[index],
+            color=classColors[index % len(classColors)],
             linewidth=1.2,
             label=label,
         )

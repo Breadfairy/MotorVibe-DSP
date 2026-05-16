@@ -45,7 +45,7 @@ csvColumns = [
     "gz2",
     "tempC",
 ]
-validLabels = ["good", "voltSag", "obstruction"]
+validLabels = ["good", "voltSag", "obstruction", "imbalance"]
 
 ################################################################################
 # helpers                                                                      #
