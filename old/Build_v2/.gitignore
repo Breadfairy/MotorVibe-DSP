@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+.DS_Store
+MCU/build/
+MCU/build_original/
+MCU/build_original_nodemcu/
+MCU/.staged/
+outputs/.matplotlib/

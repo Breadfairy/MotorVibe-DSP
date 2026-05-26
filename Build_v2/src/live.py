@@ -1,42 +1,67 @@
-################################################################################
-# Imports                                                                      #
-################################################################################
+# Runs live ESP32 streaming, feature extraction, classification, and plotting.
 from pathlib import Path
+import math
+import os
+import struct
+import sys
 import time
 
+# Keeps matplotlib cache output outside the submission tree during imports.
+buildDir = Path(__file__).resolve().parents[1]
+mplConfigDir = Path(os.environ.get("TMPDIR", "/tmp")) / "Build_FanTest_v2_matplotlib"
+os.environ.setdefault("MPLCONFIGDIR", str(mplConfigDir))
+os.environ.setdefault("XDG_CACHE_HOME", str(mplConfigDir))
+
+import joblib
 import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
 import numpy as np
 import pandas as pd
 import serial
+from serial.tools import list_ports
 
+import config
 import data
-import ml
-import serial_shared
 import signals
 
-################################################################################
-# variables/constants                                                          #
-################################################################################
-# Live serial and model settings.
-buildDir = Path(__file__).resolve().parents[1]
-modelPath = buildDir / "outputs" / "models" / "motorPumpClassifier.joblib"
-port = "/dev/cu.usbserial-0001"
+# Defines model lookup paths shared with train.py.
+modelDir = buildDir / "outputs" / "models"
+modelChoices = {
+    choice: modelDir / fileName
+    for choice, _, fileName in config.modelCatalog
+}
+healthModelChoices = {
+    choice: modelDir / f"health_{fileName}"
+    for choice, _, fileName in config.modelCatalog
+}
+
+# Defines serial decoding settings for the ESP32 binary stream.
+defaultPort = None
 baudRate = 1000000
 timeout = 1.0
+recordFormat = "<I12hf"
+bufferSampleCount = 32
+accelScale = 16384.0
+gyroScale = 131.0
+readyPrefix = "Sample struct size (bytes):"
+startCommand = b"START\n"
+recordSize = struct.calcsize(recordFormat)
+bufferSize = recordSize * bufferSampleCount
 
-# Plot and inference timing.
+# Defines live plotting and prediction refresh settings.
 plotSecs = 2.0
 visualRefreshSecs = 0.1
 plotEventSecs = 0.25
-inferRefreshSecs = 0.5
+inferRefreshSecs = 0.25
 probSmoothSecs = 5.0
 probHistorySecs = 60.0
 plotMaxHz = 500.0
 magSensor = 1
 fftSensor = 1
+healthThresholdPercent = 75.0
+healthDisplayLabels = ["good", "obstruction", "imbalance"]
 
-# Display colours.
+# Defines the fixed plot colours used by the live monitor.
 bgColor = [0.08, 0.03, 0.03]
 textColor = [0.98, 0.95, 0.82]
 gridColor = [0.45, 0.40, 0.35]
@@ -52,14 +77,74 @@ classColors = [
     "#f4a261",
     "#8e5ea2",
     "#6c757d",
+    "#e76f51",
+    "#00a896",
+    "#f72585",
+    "#90be6d",
 ]
 
-################################################################################
-# helpers                                                                      #
-################################################################################
+
+# Finds the first likely serial port if the user did not pass one in.
+def detectPort():
+    ports = list(list_ports.comports())
+    for item in ports:
+        if "usbserial" in item.device:
+            return item.device
+    for item in ports:
+        if "usbmodem" in item.device:
+            return item.device
+    return None
 
 
-# Applies the chart style.
+# Waits for the MCU ready message and then starts the binary stream.
+def waitForReady(link):
+    while True:
+        line = link.readline().decode("ascii", errors="ignore").strip()
+        if len(line) == 0:
+            continue
+        if line.startswith(readyPrefix):
+            link.write(startCommand)
+            link.flush()
+            return
+
+
+# Resets the serial link so the MCU starts from a clean state.
+def prepareLink(link):
+    link.dtr = False
+    link.rts = False
+    time.sleep(0.2)
+    link.reset_input_buffer()
+    link.dtr = True
+    link.rts = True
+
+
+# Converts one decoded binary packet into one CSV-style signal row.
+def packetRow(packetValues, firstTUsRaw):
+    tUsRaw = packetValues[0]
+    tUs = (tUsRaw - firstTUsRaw) & 0xFFFFFFFF
+    tempC = packetValues[13]
+    if not math.isfinite(tempC):
+        tempC = 0.0
+    return [
+        tUs,
+        tUs / 1e6,
+        packetValues[1] / accelScale,
+        packetValues[2] / accelScale,
+        packetValues[3] / accelScale,
+        packetValues[4] / gyroScale,
+        packetValues[5] / gyroScale,
+        packetValues[6] / gyroScale,
+        packetValues[7] / accelScale,
+        packetValues[8] / accelScale,
+        packetValues[9] / accelScale,
+        packetValues[10] / gyroScale,
+        packetValues[11] / gyroScale,
+        packetValues[12] / gyroScale,
+        tempC,
+    ]
+
+
+# Applies the shared dark plot style to one axis.
 def styleAx(ax):
     ax.set_facecolor(bgColor)
     ax.tick_params(colors=textColor, labelsize=8)
@@ -73,20 +158,123 @@ def styleAx(ax):
     )
 
 
-# Prints the current state in place.
-def renderState(state, confidence, probVector, labelNames):
-    lines = [
-        f"state: {state}",
-        f"confidence: {confidence * 100.0:.1f}%",
-        "",
+# Calculates acceleration magnitude for the live time plot.
+def accelMagnitude(df, sensorNumber):
+    cols = [
+        f"ax{sensorNumber}",
+        f"ay{sensorNumber}",
+        f"az{sensorNumber}",
     ]
-    for index, labelName in enumerate(labelNames):
-        lines.append(f"{labelName}: {probVector[index] * 100.0:.1f}%")
+    x = df[cols[0]].to_numpy(dtype=np.float64)
+    y = df[cols[1]].to_numpy(dtype=np.float64)
+    z = df[cols[2]].to_numpy(dtype=np.float64)
+    return np.sqrt((x * x) + (y * y) + (z * z))
+
+
+# Builds the summed acceleration FFT used by the live FFT plot.
+def fftSum(df, sensorNumber, sampleRate):
+    cols = [
+        f"ax{sensorNumber}",
+        f"ay{sensorNumber}",
+        f"az{sensorNumber}",
+    ]
+    sumParts = []
+    hz = None
+    for col in cols:
+        hz, mag = signals.buildSpectrum(df[col], sampleRate)
+        sumParts.append(mag)
+    stacked = np.vstack(sumParts)
+    total = np.sqrt(np.sum(stacked * stacked, axis=0))
+    return hz, total
+
+
+# Converts the latest live rows into one sklearn feature row.
+def featureRowFromRows(rows, bundle):
+    sampleRate = bundle["sampleRate"]
+    df = pd.DataFrame(rows, columns=data.signalCols)
+    df = data.cleanFrame(df)
+    timeData = signals.timeSignals(df, sampleRate)
+    freqData = signals.fftSignals(timeData, sampleRate, signals.fftConfig)
+    return signals.modelInput(timeData, freqData)
+
+
+# Prints the current raw and smoothed multiclass state to the terminal.
+def renderMulticlassState(
+    rawState,
+    rawConfidence,
+    rawProbVector,
+    smoothState,
+    smoothConfidence,
+    smoothProbVector,
+    labels,
+):
+    lines = [
+        "\nRAW STREAM",
+        "-----------------------------",
+        f"state: {rawState}",
+        f"confidence: {rawConfidence * 100.0:.1f}%",
+        "\nSplits:",
+    ]
+    for index, label in enumerate(labels):
+        lines.append(f"{label}: {rawProbVector[index] * 100.0:.1f}%")
+
+    lines += [
+        "\n\nSMOOTHED",
+        "-----------------------------",
+        f"state: {smoothState}",
+        f"confidence: {smoothConfidence * 100.0:.1f}%",
+        "\nSplits",
+    ]
+    for index, label in enumerate(labels):
+        lines.append(f"{label}: {smoothProbVector[index] * 100.0:.1f}%")
+
     text = "\n".join(lines)
     print(f"\x1b[2J\x1b[H{text}", end="", flush=True)
 
 
-# Builds the acceleration magnitude plot.
+# Reads the raw good, obstruction, and imbalance probabilities from a health model.
+def healthProbabilities(probVector, labels):
+    labelMap = {label.lower(): index for index, label in enumerate(labels)}
+    missing = [label for label in healthDisplayLabels if label not in labelMap]
+    if len(missing) > 0:
+        raise SystemExit(
+            "health mode needs a model with labels: "
+            + ", ".join(healthDisplayLabels)
+        )
+    return np.array(
+        [
+            probVector[labelMap["good"]],
+            probVector[labelMap["obstruction"]],
+            probVector[labelMap["imbalance"]],
+        ],
+        dtype=np.float64,
+    )
+
+
+# Prints the live binary motor-health state to the terminal.
+def renderHealthState(probVector, labels):
+    goodProb, obstructionProb, imbalanceProb = healthProbabilities(
+        probVector,
+        labels,
+    )
+    healthPercent = float(goodProb * 100.0)
+    status = "healthy"
+    if healthPercent < healthThresholdPercent:
+        status = "unhealthy"
+
+    lines = [
+        f"MOTOR HEALTH: {healthPercent:.2f}%",
+        f"Status: {status}",
+        "----------------------",
+        "Failure Probability:",
+        f"   obstruction: {obstructionProb * 100.0:.1f}%",
+        f"   imbalance: {imbalanceProb * 100.0:.1f}%",
+    ]
+    text = "\n".join(lines)
+    print(f"\x1b[2J\x1b[H{text}", end="", flush=True)
+
+
+# Creates the acceleration magnitude subplot.
 def buildMagnitudeFig(ax):
     ax.set_title(f"MPU{magSensor} Acc Magnitude", color=textColor)
     ax.set_xlabel("time s", color=textColor)
@@ -98,7 +286,7 @@ def buildMagnitudeFig(ax):
     }
 
 
-# Builds the FFT plot.
+# Creates the summed FFT subplot with bearing-band overlays.
 def buildFftFig(ax):
     ax.set_title(f"MPU{fftSensor} Acc Summed FFT", color=textColor)
     ax.set_xlabel("frequency hz", color=textColor)
@@ -152,20 +340,20 @@ def buildFftFig(ax):
     }
 
 
-# Builds the probability history plot.
-def buildProbFig(ax, labelNames):
-    ax.set_title("Raw Model Probability", color=textColor)
+# Creates the probability trace subplot.
+def buildProbFig(ax, labels, title):
+    ax.set_title(title, color=textColor)
     ax.set_xlabel("elapsed s", color=textColor)
     ax.set_ylabel("probability %", color=textColor)
     ax.set_ylim(0.0, 100.0)
     lines = []
-    for index, labelName in enumerate(labelNames):
+    for index, label in enumerate(labels):
         line, = ax.plot(
             [],
             [],
-            color=classColors[index],
+            color=classColors[index % len(classColors)],
             linewidth=1.2,
-            label=labelName,
+            label=label,
         )
         lines.append(line)
     ax.legend(frameon=False, labelcolor=textColor, loc="upper left")
@@ -175,19 +363,24 @@ def buildProbFig(ax, labelNames):
     }
 
 
-# Creates the live figure.
-def buildLiveFigs(labelNames):
+# Creates the single live figure with all three subplots.
+def buildLiveFigs(labels, binaryEnabled):
     plt.ion()
     fig, axes = plt.subplots(3, 1, figsize=(9, 9))
     fig.patch.set_facecolor(bgColor)
     for ax in axes:
         styleAx(ax)
 
+    plotLabels = labels
+    title = "Raw Model Probability"
+    if binaryEnabled:
+        title = "MOTOR HEALTH: --.--% | Status: waiting"
+
     figs = {
         "fig": fig,
         "mag": buildMagnitudeFig(axes[0]),
         "fft": buildFftFig(axes[1]),
-        "prob": buildProbFig(axes[2], labelNames),
+        "prob": buildProbFig(axes[2], plotLabels, title),
     }
     fig.tight_layout()
     plt.show(block=False)
@@ -195,15 +388,10 @@ def buildLiveFigs(labelNames):
     return figs
 
 
-# Updates the time-domain plot.
-def updateMagnitudeFig(figData, df, sampleRate):
-    cols = signals.accelCols(magSensor)
-    timeData = signals.plotTime(df, sampleRate, columns=cols)
-    x = timeData[cols[0]]
-    yAxis = timeData[cols[1]]
-    z = timeData[cols[2]]
-    y = np.sqrt((x * x) + (yAxis * yAxis) + (z * z))
+# Updates the acceleration magnitude line.
+def updateMagnitudeFig(figData, df):
     t = df["t_s"].to_numpy(dtype=np.float64)
+    y = accelMagnitude(df, magSensor)
     t = t - t[0]
     figData["line"].set_data(t, y)
     figData["ax"].set_xlim(0.0, max(plotSecs, float(t[-1])))
@@ -213,21 +401,27 @@ def updateMagnitudeFig(figData, df, sampleRate):
     figData["ax"].set_ylim(yMin - yPad, yMax + yPad)
 
 
-# Updates the FFT plot.
+# Updates the FFT line, fundamental marker, and BPFO/BPFI bands.
 def updateFftFig(figData, df, sampleRate):
-    cols = signals.accelCols(fftSensor)
-    timeData = signals.plotTime(df, sampleRate, columns=cols)
-    freqData = signals.plotFreq(timeData, sampleRate, signals.fftConfig)
-    hz = freqData["freqAxis"]
-    parts = np.vstack([freqData[f"{col}Spectrum"] for col in cols])
-    total = np.sqrt(np.sum(parts * parts, axis=0))
+    hz, total = fftSum(df, fftSensor, sampleRate)
     fundHz, fundMag = signals.fundamentalPeak(
         hz,
         total,
         signals.fftConfig["minHz"],
         signals.fftConfig["maxHz"],
     )
-    bpfo, bpfi = signals.bearingBands(fundHz, signals.fftConfig)
+    bpfo = signals.orderBand(
+        fundHz,
+        signals.fftConfig["bpfoLowOrder"],
+        signals.fftConfig["bpfoHighOrder"],
+        signals.fftConfig["tolFraction"],
+    )
+    bpfi = signals.orderBand(
+        fundHz,
+        signals.fftConfig["bpfiLowOrder"],
+        signals.fftConfig["bpfiHighOrder"],
+        signals.fftConfig["tolFraction"],
+    )
     mask = hz <= plotMaxHz
     x = hz[mask]
     y = total[mask]
@@ -246,11 +440,11 @@ def updateFftFig(figData, df, sampleRate):
     figData["ax"].set_ylim(0.0, max(0.1, yMax * 1.1))
 
 
-# Updates the probability plot.
-def updateProbFig(figData, probTimes, probRows, labelNames):
+# Updates the raw probability lines.
+def updateProbFig(figData, probTimes, probRows, labels):
     x = np.array(probTimes, dtype=np.float64)
     y = np.vstack(probRows).astype(np.float64) * 100.0
-    for index in range(len(labelNames)):
+    for index in range(len(labels)):
         figData["lines"][index].set_data(x, y[:, index])
     if len(x) > 1:
         figData["ax"].set_xlim(max(0.0, x[-1] - probHistorySecs), x[-1])
@@ -258,22 +452,35 @@ def updateProbFig(figData, probTimes, probRows, labelNames):
         figData["ax"].set_xlim(0.0, probHistorySecs)
 
 
-# Updates the signal plots.
-def updateVisualFigs(figs, rows, sampleRate, visualRows):
-    viewRows = rows[-visualRows:]
-    df = pd.DataFrame(viewRows, columns=data.signalCols)
-    updateMagnitudeFig(figs["mag"], df, sampleRate)
-    updateFftFig(figs["fft"], df, sampleRate)
+# Updates the health title shown above the binary probability plot.
+def updateHealthProbTitle(figData, probVector, labels):
+    goodProb = healthProbabilities(probVector, labels)[0]
+    healthPercent = float(goodProb * 100.0)
+    status = "healthy"
+    if healthPercent < healthThresholdPercent:
+        status = "unhealthy"
+    figData["ax"].set_title(
+        f"MOTOR HEALTH: {healthPercent:.2f}% | Status: {status}",
+        color=textColor,
+    )
 
 
-# Services matplotlib events.
+# Gives matplotlib time to redraw without blocking every loop pass.
 def servicePlot(fig):
     fig.canvas.draw_idle()
     fig.canvas.flush_events()
     plt.pause(0.001)
 
 
-# Stores probability history.
+# Gives matplotlib time to redraw only when a plot update is pending.
+def servicePlotIfDue(fig, plotDirty, now, lastPlotEvent):
+    if plotDirty and now - lastPlotEvent >= plotEventSecs:
+        servicePlot(fig)
+        return False, now
+    return plotDirty, lastPlotEvent
+
+
+# Stores one probability row and trims old history.
 def appendProbHistory(probTimes, probRows, elapsedSecs, probVector):
     probTimes.append(elapsedSecs)
     probRows.append(probVector)
@@ -282,7 +489,7 @@ def appendProbHistory(probTimes, probRows, elapsedSecs, probVector):
         del probRows[0]
 
 
-# Smooths the displayed state.
+# Averages recent raw probabilities for the terminal state readout.
 def smoothProbVector(rawProbTimes, rawProbRows, elapsedSecs):
     activeRows = []
     for index in range(len(rawProbTimes)):
@@ -299,18 +506,126 @@ def smoothProbVector(rawProbTimes, rawProbRows, elapsedSecs):
         smoothVector = smoothVector / total
     return smoothVector
 
-################################################################################
-# main functions                                                               #
-################################################################################
+
+# Reads optional command line values for serial port, model choice, and health mode.
+def parseArgs(args):
+    port = defaultPort
+    selectedModel = "1"
+    binaryEnabled = False
+    modelSeen = False
+    binarySeen = False
+    for arg in args:
+        if arg in modelChoices and not modelSeen:
+            selectedModel = arg
+            modelSeen = True
+        elif arg in ["0", "1"] and modelSeen and not binarySeen:
+            binaryEnabled = arg == "1"
+            binarySeen = True
+        else:
+            port = arg
+    return port, selectedModel, binaryEnabled
 
 
+# Reads available serial bytes and decodes every complete binary sample packet.
+def readPacketRows(link, remBytes, firstTUsRaw):
+    newBytes = link.read(bufferSize)
+    if len(newBytes) == 0:
+        return [], remBytes, firstTUsRaw
+
+    rows = []
+    remBytes += newBytes
+    while len(remBytes) >= recordSize:
+        packetBytes = remBytes[:recordSize]
+        remBytes = remBytes[recordSize:]
+        packetValues = struct.unpack(recordFormat, packetBytes)
+        if firstTUsRaw is None:
+            firstTUsRaw = packetValues[0]
+        rows.append(packetRow(packetValues, firstTUsRaw))
+    return rows, remBytes, firstTUsRaw
+
+
+# Updates live magnitude and FFT plots from the most recent display window.
+def updateVisualPlots(rows, visualRows, figs, sampleRate):
+    viewRows = rows[-visualRows:]
+    df = pd.DataFrame(viewRows, columns=data.signalCols)
+    updateMagnitudeFig(figs["mag"], df)
+    updateFftFig(figs["fft"], df, sampleRate)
+
+
+# Runs one live model inference pass and updates terminal/probability displays.
+def updateInference(
+    rows,
+    winRows,
+    bundle,
+    model,
+    labels,
+    figs,
+    startTime,
+    now,
+    probTimes,
+    probRows,
+    rawProbTimes,
+    rawProbRows,
+    binaryEnabled,
+):
+    featureRow = featureRowFromRows(rows[-winRows:], bundle)
+    rawProbVector = model.predict_proba([featureRow])[0]
+    elapsedSecs = now - startTime
+    appendProbHistory(rawProbTimes, rawProbRows, elapsedSecs, rawProbVector)
+    probVector = smoothProbVector(rawProbTimes, rawProbRows, elapsedSecs)
+
+    if binaryEnabled:
+        renderHealthState(probVector, labels)
+        appendProbHistory(probTimes, probRows, elapsedSecs, rawProbVector)
+        updateProbFig(figs["prob"], probTimes, probRows, labels)
+        updateHealthProbTitle(figs["prob"], probVector, labels)
+        return
+
+    rawIndex = int(np.argmax(rawProbVector))
+    rawState = labels[rawIndex]
+    rawConfidence = float(rawProbVector[rawIndex])
+    stateIndex = int(np.argmax(probVector))
+    state = labels[stateIndex]
+    confidence = float(probVector[stateIndex])
+
+    renderMulticlassState(
+        rawState,
+        rawConfidence,
+        rawProbVector,
+        state,
+        confidence,
+        probVector,
+        labels,
+    )
+    appendProbHistory(probTimes, probRows, elapsedSecs, rawProbVector)
+    updateProbFig(figs["prob"], probTimes, probRows, labels)
+
+
+# Runs the live serial, plotting, and inference loop.
 def main():
-    classifier = ml.MotorPumpClassifier.load(modelPath)
-    labelNames = classifier.labelNames
-    winRows = int(classifier.sampleRate * classifier.winSecs)
-    visualRows = int(classifier.sampleRate * plotSecs)
+    port, selectedModel, binaryEnabled = parseArgs(sys.argv[1:])
+    if port is None:
+        port = detectPort()
+    if port is None:
+        raise SystemExit(
+            "No USB serial port found. Pass the port explicitly, for example: "
+            "python3 src/live.py 1 0 /dev/cu.usbserial-0001"
+        )
+
+    selectedPath = modelChoices[selectedModel]
+    if binaryEnabled:
+        selectedPath = healthModelChoices[selectedModel]
+    if not selectedPath.exists():
+        raise SystemExit(f"model file not found: {selectedPath}")
+
+    bundle = joblib.load(selectedPath)
+    model = bundle["model"]
+    labels = bundle["labelNames"]
+    winRows = int(bundle["sampleRate"] * bundle["winSecs"])
+    visualRows = int(bundle["sampleRate"] * plotSecs)
     keepRows = max(winRows, visualRows)
-    liveFigs = buildLiveFigs(labelNames)
+    minDisplayRows = min(winRows, visualRows)
+    figs = buildLiveFigs(labels, binaryEnabled)
 
     rows = []
     remBytes = b""
@@ -322,84 +637,76 @@ def main():
     plotDirty = False
     probTimes = []
     probRows = []
+    rawProbTimes = []
+    rawProbRows = []
 
+    # Reads binary packets continuously and updates plots/predictions on timers.
     with serial.Serial(
         port=port,
         baudrate=baudRate,
         timeout=timeout,
     ) as link:
-        serial_shared.prepareLink(link)
-        serial_shared.waitForReady(link)
+        prepareLink(link)
+        waitForReady(link)
         startTime = time.perf_counter()
         lastVisualUpdate = startTime
         lastInferUpdate = startTime
         lastPlotEvent = startTime
 
         while True:
-            newBytes = link.read(serial_shared.bufferSize)
-            if len(newBytes) == 0:
+            newRows, remBytes, firstTUsRaw = readPacketRows(
+                link,
+                remBytes,
+                firstTUsRaw,
+            )
+            if len(newRows) == 0:
+                now = time.perf_counter()
+                plotDirty, lastPlotEvent = servicePlotIfDue(
+                    figs["fig"],
+                    plotDirty,
+                    now,
+                    lastPlotEvent,
+                )
                 continue
 
-            remBytes += newBytes
-            packets, remBytes = serial_shared.decodePackets(remBytes)
-            for packetValues in packets:
-                if firstTUsRaw is None:
-                    firstTUsRaw = packetValues[0]
-                rows.append(serial_shared.packetRow(packetValues, firstTUsRaw))
-
+            rows.extend(newRows)
             if len(rows) > keepRows:
                 rows = rows[-keepRows:]
-            if len(rows) < min(winRows, visualRows):
-                continue
 
             now = time.perf_counter()
-            if now - lastVisualUpdate >= visualRefreshSecs:
+            if (
+                len(rows) >= minDisplayRows
+                and now - lastVisualUpdate >= visualRefreshSecs
+            ):
                 lastVisualUpdate = now
-                updateVisualFigs(
-                    liveFigs,
+                updateVisualPlots(rows, visualRows, figs, bundle["sampleRate"])
+                plotDirty = True
+
+            if len(rows) >= winRows and now - lastInferUpdate >= inferRefreshSecs:
+                lastInferUpdate = now
+                updateInference(
                     rows,
-                    classifier.sampleRate,
-                    visualRows,
+                    winRows,
+                    bundle,
+                    model,
+                    labels,
+                    figs,
+                    startTime,
+                    now,
+                    probTimes,
+                    probRows,
+                    rawProbTimes,
+                    rawProbRows,
+                    binaryEnabled,
                 )
                 plotDirty = True
 
-            if len(rows) < winRows:
-                if plotDirty and now - lastPlotEvent >= plotEventSecs:
-                    servicePlot(liveFigs["fig"])
-                    plotDirty = False
-                    lastPlotEvent = now
-                continue
-            if now - lastInferUpdate < inferRefreshSecs:
-                if plotDirty and now - lastPlotEvent >= plotEventSecs:
-                    servicePlot(liveFigs["fig"])
-                    plotDirty = False
-                    lastPlotEvent = now
-                continue
-            lastInferUpdate = now
-
-            rawProbVector = classifier.predictRows(rows[-winRows:])
-            elapsedSecs = now - startTime
-            appendProbHistory(
-                probTimes,
-                probRows,
-                elapsedSecs,
-                rawProbVector,
+            plotDirty, lastPlotEvent = servicePlotIfDue(
+                figs["fig"],
+                plotDirty,
+                now,
+                lastPlotEvent,
             )
-
-            probVector = smoothProbVector(
-                probTimes,
-                probRows,
-                elapsedSecs,
-            )
-            state, confidence = ml.stateFromProb(probVector, labelNames)
-            renderState(state, confidence, probVector, labelNames)
-            updateProbFig(liveFigs["prob"], probTimes, probRows, labelNames)
-            plotDirty = True
-
-            if plotDirty and now - lastPlotEvent >= plotEventSecs:
-                servicePlot(liveFigs["fig"])
-                plotDirty = False
-                lastPlotEvent = now
 
 
 if __name__ == "__main__":

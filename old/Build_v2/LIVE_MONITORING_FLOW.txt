@@ -1,0 +1,452 @@
+Build V2 Firmware To Live Monitoring Flow
+=========================================
+
+This document describes the high-level flow from the firmware running on the
+ESP32 through to the live monitoring display in Python.
+
+It is intended as a simple walkthrough of what happens when the system is
+running live.
+
+
+Overall Flow
+------------
+
+    Motor or fan is running
+        |
+        v
+    Sensors measure vibration
+        |
+        v
+    ESP32 firmware reads the sensors
+        |
+        v
+    ESP32 streams samples over USB serial
+        |
+        v
+    Python decodes the live stream
+        |
+        v
+    Python keeps a rolling window of recent data
+        |
+        v
+    Signal features are extracted
+        |
+        v
+    Trained model predicts the current state
+        |
+        v
+    Terminal and plots update for live monitoring
+
+
+Firmware Role
+-------------
+
+The firmware is responsible for collecting clean, steady sensor data.
+
+At a high level, it does four jobs:
+
+    starts the sensors
+    samples vibration at a fixed rate
+    packages each sample into a compact binary record
+    sends those records to the computer over USB serial
+
+The firmware does not run the machine learning model. Its job is to produce the
+live data stream that Python needs.
+
+
+Sensor Sampling
+---------------
+
+The Build V2 motor setup uses two MPU6050 motion sensors. Each sensor measures:
+
+    acceleration on X, Y, and Z
+    rotation rate on X, Y, and Z
+
+Together, the two sensors produce twelve motion channels.
+
+The firmware also includes temperature in each sample record. In the current
+compact classifier, vibration is the main signal used for prediction, while
+temperature is recorded as supporting context.
+
+
+Sample Rate
+-----------
+
+The firmware aims to sample at 1000 Hz.
+
+That means:
+
+    1000 samples per second
+    1 sample every 1000 microseconds
+
+This rate is important because the Python training and live inference code both
+assume a 1000 Hz stream. A one-second ML window is expected to contain about
+1000 rows.
+
+The firmware does not simply sample whenever the main loop happens to run.
+Instead, it keeps a target time for the next sample. After each sample is due,
+that target advances by 1000 microseconds.
+
+The reason for this is timing consistency. Vibration analysis depends on knowing
+the time spacing between samples. If the sample timing wandered too much, the
+frequency features would become less reliable.
+
+
+Firmware Startup
+----------------
+
+The firmware starts in a waiting state.
+
+The basic startup flow is:
+
+    power up ESP32
+        |
+        v
+    configure sensors
+        |
+        v
+    print ready message over serial
+        |
+        v
+    wait for Python to send START
+        |
+        v
+    begin streaming binary samples
+
+This handshake is useful because it gives Python a clean starting point. Python
+can open the serial port, clear old data, wait for the ready message, and then
+tell the firmware to begin.
+
+
+Serial Streaming
+----------------
+
+Once streaming starts, the firmware repeatedly sends sample records.
+
+Each record contains:
+
+    timestamp
+    sensor 1 acceleration and rotation
+    sensor 2 acceleration and rotation
+    temperature
+
+The data is sent in binary form instead of human-readable text. Binary is used
+because it is smaller and faster to send. That matters when the system is
+streaming many samples per second.
+
+Each sample record is 32 bytes. At 1000 samples per second, the raw stream is
+about 32000 bytes per second before USB serial overhead.
+
+The firmware uses buffering so sampling can stay steady while data is being sent
+over USB serial.
+
+
+Firmware Buffering
+------------------
+
+The firmware has two sample buffers:
+
+    buffer A
+    buffer B
+
+Each buffer holds 32 samples.
+
+Since each sample is 32 bytes:
+
+    32 samples x 32 bytes = 1024 bytes per full buffer
+
+At a 1000 Hz sample rate, one 32-sample buffer represents about 32 milliseconds
+of sensor data.
+
+The firmware uses the two buffers like this:
+
+    one buffer is being filled with new sensor samples
+    the other buffer is waiting to be sent or is currently being sent
+
+When the fill buffer reaches 32 samples, the firmware swaps the buffers. The
+full buffer becomes the send buffer, and the other buffer becomes the new fill
+buffer.
+
+This is called double buffering.
+
+The reason this matters is that sampling and sending are different jobs:
+
+    sampling must happen on a steady time base
+    serial sending depends on how much space USB serial currently has available
+
+USB serial may not accept a whole block at exactly the moment the firmware wants
+to send it. If the firmware waited too long for serial, sampling would become
+uneven. Double buffering reduces that problem because the firmware can keep
+collecting samples while the previous block is being sent.
+
+The firmware also does not assume the whole 1024-byte buffer can be written at
+once. It checks how much serial write space is available and sends only that
+much. If only part of the buffer is sent, it remembers the send position and
+continues later.
+
+That is the important point for Q and A:
+
+    the buffer protects the sample rate from serial timing delays
+
+Without buffering, the ESP32 would be more likely to pause sensor collection
+while waiting for USB serial to accept data.
+
+
+What Happens If Sending Falls Behind
+------------------------------------
+
+The buffering gives the firmware some breathing room, but it is not infinite
+storage.
+
+If serial output cannot keep up for too long, the firmware has to prioritise
+not overwriting data that has not been sent yet. In that situation, sampling can
+effectively stall until the send buffer has room to move on.
+
+That is why the baud rate and compact binary records matter. The system needs
+the serial link to be comfortably faster than the data being produced.
+
+In this build:
+
+    sample rate: 1000 Hz
+    sample size: 32 bytes
+    data rate: about 32000 bytes per second
+    serial baud rate: 1000000 baud
+
+So the serial link has enough practical headroom for the stream when everything
+is connected cleanly.
+
+
+Python Live Script
+------------------
+
+The live monitoring side is handled by:
+
+    Build_v2/src/live.py
+
+The live script does the monitoring workflow:
+
+    loads the trained model
+    opens the serial port
+    waits for the firmware ready message
+    sends START
+    reads the incoming binary stream
+    converts binary packets into sensor rows
+    keeps partial leftover bytes between reads
+    keeps recent rows in memory
+    updates plots and predictions
+
+The live script does not train the model. It loads the model that was already
+created by the training script.
+
+
+Python Stream Buffering
+-----------------------
+
+USB serial is a byte stream. Even though the firmware sends fixed-size sample
+records, Python might receive bytes in uneven chunks.
+
+For example, one read might contain:
+
+    exactly one full sample
+    several full samples
+    half of a sample
+    the end of one sample and the start of another
+
+Python therefore keeps a small leftover byte buffer. It appends new bytes to the
+leftovers, decodes every complete 32-byte sample it can, and keeps any remaining
+partial bytes for the next read.
+
+This is separate from the ML rolling window.
+
+There are three buffering ideas in the live system:
+
+    firmware double buffer
+        keeps sensor sampling and serial sending stable
+
+    Python byte buffer
+        rebuilds full sample records from the USB serial byte stream
+
+    Python rolling row buffer
+        keeps recent decoded rows for plotting and model inference
+
+
+Rolling Live Window
+-------------------
+
+Python keeps a rolling window of recent sensor rows.
+
+This rolling window is the live system's short-term memory. New rows are added
+as they arrive. Old rows are dropped once they are no longer needed.
+
+The live script normally keeps enough rows for:
+
+    the latest one-second model input
+    a slightly longer live plot view
+
+This lets the system both classify the current state and show recent vibration
+behaviour on screen.
+
+The rolling row buffer is why live inference can happen repeatedly without
+stopping the stream. Python always has the newest block of data ready to turn
+into features.
+
+
+Feature Extraction
+------------------
+
+The model does not predict directly from raw serial bytes.
+
+The live script first converts the newest one-second window into the same
+features used during training.
+
+The feature extraction step summarises the vibration into values such as:
+
+    overall vibration level
+    dominant frequency
+    strength of the dominant frequency
+    energy in selected frequency bands
+
+This is the bridge between raw sensor data and the trained model.
+
+
+Model Prediction
+----------------
+
+After features are extracted, the live script passes them into the saved model.
+
+The model outputs a probability for each class it was trained on.
+
+For the Build V2 motor/pump model, the main classes are:
+
+    good
+    bad_leak
+
+For the fan test demonstration, the classes depend on the fan training data,
+such as:
+
+    good
+    voltSag
+
+The class with the highest probability is shown as the current predicted state.
+
+
+Live Display
+------------
+
+The live display has two jobs:
+
+    show the current prediction clearly
+    show enough signal behaviour to make the prediction believable
+
+The terminal displays:
+
+    predicted state
+    confidence
+    class probabilities
+
+The live plots show:
+
+    recent acceleration magnitude
+    recent frequency content
+    probability history over time
+
+The probability history is useful because it shows whether the model is stable
+or changing as the machine condition changes.
+
+
+Smoothing
+---------
+
+Live predictions can jump around from one window to the next. That is normal
+when the system is looking at short windows of vibration.
+
+To make the display easier to read, the live script averages recent probability
+outputs over a short time.
+
+This smoothing does not change how the model is trained. It only makes the live
+monitoring display more stable.
+
+
+What Happens During The Fan Demo
+--------------------------------
+
+During the fan demo, the same live flow is shown in person:
+
+    fan runs
+        |
+        v
+    vibration changes with condition
+        |
+        v
+    firmware streams sensor data
+        |
+        v
+    Python reads the stream
+        |
+        v
+    features are calculated live
+        |
+        v
+    model probabilities update
+        |
+        v
+    predicted state changes on screen
+
+The fan demo is a practical live demonstration of the architecture.
+
+The motor/pump video documents the assignment target system, while the fan
+setup shows the same monitoring pipeline operating live.
+
+
+Likely Q And A
+--------------
+
+Why is the sample rate 1000 Hz?
+
+    It gives enough time resolution for the vibration features used here while
+    keeping the data rate manageable for the ESP32, serial link, Python plots,
+    and live model updates.
+
+Why not send text over serial?
+
+    Text is larger and slower to parse. Binary records keep the stream compact
+    and make it easier to maintain a steady live data rate.
+
+Why does the firmware need two buffers?
+
+    Because collecting samples and sending data do not happen on the same
+    timing. The firmware needs to keep sampling steadily even if USB serial is
+    briefly busy. One buffer can fill while the other is being sent.
+
+What does the 32-sample buffer mean?
+
+    At 1000 Hz, 32 samples is about 32 milliseconds of data. It is small enough
+    to keep latency low but large enough to send data in efficient chunks.
+
+Is buffering the same as smoothing?
+
+    No. Buffering stores data so the system can move it reliably through the
+    pipeline. Smoothing averages recent prediction probabilities so the display
+    is easier to read.
+
+
+End-To-End Summary
+------------------
+
+The firmware produces a steady sensor stream.
+
+Python turns that stream into rolling one-second windows.
+
+Each window is converted into vibration features.
+
+The trained model turns those features into class probabilities.
+
+The live monitor shows the current state, confidence, recent vibration, and
+probability history.
+
+In short:
+
+    firmware collects the data
+    Python interprets the data
+    the model classifies the condition
+    the live monitor makes the result visible

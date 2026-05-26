@@ -1,25 +1,27 @@
+// Streams two MPU6050 sensors and one DS18B20 temperature sensor to USB serial.
 #include <Wire.h>
 #include <OneWire.h>
 #include <DallasTemperature.h>
 
-// ---------- I2C Pins ----------
+// Defines the ESP32 I2C pins used by both MPU6050 sensors.
 #define SDA_PIN 21
 #define SCL_PIN 22
 
-// ---------- DS18B20 ----------
+// Defines the DS18B20 pin and non-blocking conversion timing.
 #define DS18B20_PIN 4
 #define TEMP_CONVERSION_TIME 750
 OneWire oneWire(DS18B20_PIN);
 DallasTemperature sensors(&oneWire);
 
-// ---------- Stream Timing ----------
+// Defines the serial rate and target 1 kHz sampling period.
 #define STREAM_BAUD 1000000
 #define SAMPLE_PERIOD_US 1000
 
-// ---------- MPU6050 ----------
+// Defines the two MPU6050 I2C addresses.
 #define MPU1_ADDR 0x68
 #define MPU2_ADDR 0x69
 
+// Defines the MPU6050 registers written or read by the firmware.
 #define REG_SMPLRT_DIV   0x19
 #define REG_CONFIG       0x1A
 #define REG_GYRO_CONFIG  0x1B
@@ -31,7 +33,7 @@ DallasTemperature sensors(&oneWire);
 #define REG_PWR_MGMT_1   0x6B
 #define REG_PWR_MGMT_2   0x6C
 
-// ---------- Packed Struct ----------
+// Packs one timestamped sample so Python can decode a fixed binary layout.
 struct __attribute__((packed)) Sample {
   uint32_t t_us;
   int16_t ax1, ay1, az1;
@@ -41,6 +43,7 @@ struct __attribute__((packed)) Sample {
   float tempC;
 };
 
+// Uses double buffering so sampling can continue while serial bytes are sent.
 const int BUFFER_SAMPLES = 32;
 Sample bufferA[BUFFER_SAMPLES];
 Sample bufferB[BUFFER_SAMPLES];
@@ -51,10 +54,10 @@ size_t sendOffset = 0;
 bool sendPending = false;
 uint32_t nextTick = 0;
 
-// ---------- Temperature State ----------
+// Stores the most recent valid temperature reading from the background task.
 volatile float temperatureC = 0.0;
 
-// ---------- MPU Helpers ----------
+// Writes one byte to one MPU6050 register.
 void writeMPU(uint8_t addr, uint8_t reg, uint8_t val) {
   Wire.beginTransmission(addr);
   Wire.write(reg);
@@ -62,6 +65,7 @@ void writeMPU(uint8_t addr, uint8_t reg, uint8_t val) {
   Wire.endTransmission();
 }
 
+// Reads accelerometer and gyroscope values from one MPU6050 burst transfer.
 bool readMPU14(
   uint8_t addr,
   int16_t &ax,
@@ -84,6 +88,7 @@ bool readMPU14(
   ax = (Wire.read() << 8) | Wire.read();
   ay = (Wire.read() << 8) | Wire.read();
   az = (Wire.read() << 8) | Wire.read();
+  // Skips the MPU6050 internal temperature bytes because DS18B20 is used.
   Wire.read();
   Wire.read();
   gx = (Wire.read() << 8) | Wire.read();
@@ -92,6 +97,7 @@ bool readMPU14(
   return true;
 }
 
+// Resets and configures one MPU6050 for 1 kHz accel/gyro sampling.
 void setupMPU(uint8_t addr) {
   writeMPU(addr, REG_PWR_MGMT_1, 0x80);
   delay(100);
@@ -108,6 +114,7 @@ void setupMPU(uint8_t addr) {
   delay(100);
 }
 
+// Waits for the host program to send START before streaming binary data.
 void waitForStart() {
   while (true) {
     if (Serial.available() <= 0) {
@@ -123,6 +130,7 @@ void waitForStart() {
   }
 }
 
+// Sends a pending sample buffer without blocking the sampling loop.
 void serviceSerial() {
   if (!sendPending) {
     return;
@@ -151,7 +159,9 @@ void serviceSerial() {
   }
 }
 
+// Updates temperature in a background FreeRTOS task.
 void tempTask(void *taskData) {
+  (void)taskData;
   sensors.requestTemperatures();
 
   while (true) {
@@ -164,6 +174,7 @@ void tempTask(void *taskData) {
   }
 }
 
+// Initialises serial, sensors, I2C, and the host start handshake.
 void setup() {
   Serial.begin(STREAM_BAUD);
   delay(1000);
@@ -193,6 +204,7 @@ void setup() {
   nextTick = micros();
 }
 
+// Samples both MPU6050 sensors at 1 kHz and queues binary buffers for serial.
 void loop() {
   if (fillIndex >= BUFFER_SAMPLES) {
     if (sendPending) {

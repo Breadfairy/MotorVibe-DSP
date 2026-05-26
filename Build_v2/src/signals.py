@@ -1,14 +1,8 @@
-################################################################################
-# Imports                                                                      #
-################################################################################
+# Extracts compact time-domain and FFT features from one-second sensor windows.
 import numpy as np
 from scipy import fft
 
-################################################################################
-# variables/constants                                                          #
-################################################################################
-# Raw sensor columns from the two MPU devices.
-# These names match the CSV headers written by capture.py and live.py.
+# Lists the raw accelerometer and gyroscope channels used by the model.
 axisCols = [
     "ax1",
     "ay1",
@@ -24,8 +18,7 @@ axisCols = [
     "gz2",
 ]
 
-# FFT settings used by training, inference, live display, and charts.
-# The model keeps one low-order rumble band plus BPFO/BPFI-style order bands.
+# Defines the fan speed and order-band limits used for FFT features.
 fftConfig = {
     "minHz": 1.0,
     "maxHz": 70.0,
@@ -38,18 +31,13 @@ fftConfig = {
     "tolFraction": 0.10,
 }
 
-# Each group combines X/Y/Z into one magnitude signal.
-# This keeps the model feature count smaller than treating every axis separately.
+# Groups three axes into magnitude signals for each sensor type and sensor body.
 axisGroups = [
     ("acc1", "ax1", "ay1", "az1"),
     ("gyr1", "gx1", "gy1", "gz1"),
     ("acc2", "ax2", "ay2", "az2"),
     ("gyr2", "gx2", "gy2", "gz2"),
 ]
-
-################################################################################
-# helpers                                                                      #
-################################################################################
 
 
 # Builds one FFT magnitude spectrum after removing the DC offset.
@@ -63,7 +51,7 @@ def buildSpectrum(signal, sampleRate):
     return hz, mag
 
 
-# Finds the largest FFT peak inside the expected running range.
+# Finds the largest FFT peak inside the expected fan running range.
 def fundamentalPeak(freqAxis, magnitude, minHz, maxHz):
     mask = (freqAxis >= minHz) & (freqAxis <= maxHz)
     hz = freqAxis[mask]
@@ -72,42 +60,14 @@ def fundamentalPeak(freqAxis, magnitude, minHz, maxHz):
     return float(hz[peakIndex]), float(mag[peakIndex])
 
 
-# Converts a fundamental frequency into one order band.
-def _orderBand(fundHz, lowOrder, highOrder, tolFraction):
+# Converts a fundamental frequency into one order-based frequency band.
+def orderBand(fundHz, lowOrder, highOrder, tolFraction):
     lowHz = (fundHz * lowOrder) * (1.0 - tolFraction)
     highHz = (fundHz * highOrder) * (1.0 + tolFraction)
     return lowHz, highHz
 
 
-# Low-order rumble band used by the compact ML feature set.
-def lowBand(fundHz, fftConfigValue):
-    highBand = _orderBand(
-        fundHz,
-        1.0,
-        fftConfigValue["lowOrderHighOrder"],
-        fftConfigValue["tolFraction"],
-    )
-    return fftConfigValue["rumbleLowHz"], highBand[1]
-
-
-# BPFO and BPFI style bearing/order bands.
-def bearingBands(fundHz, fftConfigValue):
-    bpfo = _orderBand(
-        fundHz,
-        fftConfigValue["bpfoLowOrder"],
-        fftConfigValue["bpfoHighOrder"],
-        fftConfigValue["tolFraction"],
-    )
-    bpfi = _orderBand(
-        fundHz,
-        fftConfigValue["bpfiLowOrder"],
-        fftConfigValue["bpfiHighOrder"],
-        fftConfigValue["tolFraction"],
-    )
-    return bpfo, bpfi
-
-
-# Calculates RMS magnitude inside one FFT band.
+# Calculates the RMS level inside one FFT frequency band.
 def bandRms(freqAxis, magnitude, lowHz, highHz):
     mask = (freqAxis >= lowHz) & (freqAxis <= highHz)
     mag = magnitude[mask]
@@ -116,90 +76,77 @@ def bandRms(freqAxis, magnitude, lowHz, highHz):
     return float(np.sqrt(np.mean(mag * mag)))
 
 
-# Returns the three acceleration columns for one MPU number.
-def accelCols(sensorNumber):
-    return [
-        f"ax{sensorNumber}",
-        f"ay{sensorNumber}",
-        f"az{sensorNumber}",
-    ]
-
-################################################################################
-# main functions                                                               #
-################################################################################
+# Combines X, Y, and Z FFT magnitudes into one vector magnitude spectrum.
+def combinedSpectrum(freqData, colX, colY, colZ):
+    x = freqData[f"{colX}Spectrum"]
+    y = freqData[f"{colY}Spectrum"]
+    z = freqData[f"{colZ}Spectrum"]
+    return np.sqrt((x * x) + (y * y) + (z * z))
 
 
-# Builds raw time signals for plotting.
-def plotTime(windowFrame, sampleRate, columns=None):
+# Combines X, Y, and Z time signals into one magnitude signal.
+def combinedTimeMagnitude(timeData, colX, colY, colZ):
+    x = timeData[colX]
+    y = timeData[colY]
+    z = timeData[colZ]
+    return np.sqrt((x * x) + (y * y) + (z * z))
+
+# Copies one window of CSV data into a plain signal dictionary.
+def timeSignals(windowFrame, sampleRate):
     if "t_s" in windowFrame.columns:
         t = windowFrame["t_s"].to_numpy(dtype=np.float64)
     else:
         t = np.arange(windowFrame.shape[0], dtype=np.float64) / sampleRate
     out = {"t_s": t}
-
-    if columns is None:
-        columns = axisCols
-    for col in columns:
+    for col in axisCols:
         out[col] = windowFrame[col].to_numpy(dtype=np.float64)
-    return out
-
-
-# Builds raw axis signals plus grouped magnitudes for the ML model.
-def mlTimeSignals(windowFrame, sampleRate):
-    out = plotTime(windowFrame, sampleRate)
-
     for groupName, colX, colY, colZ in axisGroups:
-        x = out[colX]
-        y = out[colY]
-        z = out[colZ]
-        out[f"{groupName}Mag"] = np.sqrt((x * x) + (y * y) + (z * z))
+        out[f"{groupName}Mag"] = combinedTimeMagnitude(
+            out,
+            colX,
+            colY,
+            colZ,
+        )
     return out
 
 
-# Builds per-axis FFT data for plotting.
-def plotFreq(timeData, sampleRate, fftConfigValue):
+# Builds FFT data and the bearing-order features for one window.
+def fftSignals(timeData, sampleRate, fftConfigValue):
     out = {}
-    plotCols = [col for col in timeData.keys() if col != "t_s"]
-    for col in plotCols:
+    for col in axisCols:
         hz, mag = buildSpectrum(timeData[col], sampleRate)
-        fundHz, fundMag = fundamentalPeak(
-            hz,
-            mag,
-            fftConfigValue["minHz"],
-            fftConfigValue["maxHz"],
-        )
-        bpfo, bpfi = bearingBands(fundHz, fftConfigValue)
         out["freqAxis"] = hz
         out[f"{col}Spectrum"] = mag
-        out[f"{col}FundHz"] = fundHz
-        out[f"{col}FundMag"] = fundMag
-        out[f"{col}BpfoBand"] = bpfo
-        out[f"{col}BpfiBand"] = bpfi
-    return out
 
-
-# Builds grouped frequency features for the compact ML model.
-def mlFreqSignals(timeData, sampleRate, fftConfigValue):
-    out = {}
-    axisSpectra = {}
-    hz = None
-
-    for col in axisCols:
-        hz, axisSpectra[col] = buildSpectrum(timeData[col], sampleRate)
-
+    # Builds the actual model features from combined X/Y/Z magnitude spectra.
     for groupName, colX, colY, colZ in axisGroups:
-        x = axisSpectra[colX]
-        y = axisSpectra[colY]
-        z = axisSpectra[colZ]
-        mag = np.sqrt((x * x) + (y * y) + (z * z))
+        hz = out["freqAxis"]
+        mag = combinedSpectrum(out, colX, colY, colZ)
         fundHz, fundMag = fundamentalPeak(
             hz,
             mag,
             fftConfigValue["minHz"],
             fftConfigValue["maxHz"],
         )
-        lowOrder = lowBand(fundHz, fftConfigValue)
-        bpfo, bpfi = bearingBands(fundHz, fftConfigValue)
+        lowOrder = orderBand(
+            fundHz,
+            1.0,
+            fftConfigValue["lowOrderHighOrder"],
+            fftConfigValue["tolFraction"],
+        )
+        lowOrder = (fftConfigValue["rumbleLowHz"], lowOrder[1])
+        bpfo = orderBand(
+            fundHz,
+            fftConfigValue["bpfoLowOrder"],
+            fftConfigValue["bpfoHighOrder"],
+            fftConfigValue["tolFraction"],
+        )
+        bpfi = orderBand(
+            fundHz,
+            fftConfigValue["bpfiLowOrder"],
+            fftConfigValue["bpfiHighOrder"],
+            fftConfigValue["tolFraction"],
+        )
         out[f"{groupName}FundHz"] = fundHz
         out[f"{groupName}FundMag"] = fundMag
         out[f"{groupName}LowOrderRms"] = bandRms(
@@ -211,3 +158,37 @@ def mlFreqSignals(timeData, sampleRate, fftConfigValue):
         out[f"{groupName}BpfoRms"] = bandRms(hz, mag, bpfo[0], bpfo[1])
         out[f"{groupName}BpfiRms"] = bandRms(hz, mag, bpfi[0], bpfi[1])
     return out
+
+
+# Builds the same compact summary/order-band feature set used by Build_v2.
+def modelInput(timeData, freqData):
+    parts = []
+    for groupName, colX, colY, colZ in axisGroups:
+        mag = timeData[f"{groupName}Mag"]
+        stats = [
+            float(np.sqrt(np.mean(mag * mag))),
+            float(np.min(mag)),
+            float(np.max(mag)),
+            freqData[f"{groupName}FundHz"],
+            freqData[f"{groupName}FundMag"],
+            freqData[f"{groupName}LowOrderRms"],
+            freqData[f"{groupName}BpfoRms"],
+            freqData[f"{groupName}BpfiRms"],
+        ]
+        parts.append(np.array(stats, dtype=np.float32))
+    return np.concatenate(parts).astype(np.float32)
+
+
+# Lists the feature names in the same order as modelInput().
+def featureNames():
+    names = []
+    for groupName, colX, colY, colZ in axisGroups:
+        names.append(f"{groupName}_rms")
+        names.append(f"{groupName}_min")
+        names.append(f"{groupName}_max")
+        names.append(f"{groupName}_fundHz")
+        names.append(f"{groupName}_fundMag")
+        names.append(f"{groupName}_lowOrderRms")
+        names.append(f"{groupName}_bpfoRms")
+        names.append(f"{groupName}_bpfiRms")
+    return names
